@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { canTransitionFeedbackStatus } from "@/lib/domain";
+import { getSiteUrl } from "@/lib/site-url";
 import type { FeedbackStatus } from "@/lib/types";
 import {
   commentSchema,
@@ -286,7 +287,7 @@ export async function createInvite(formData: FormData): Promise<ActionResult> {
   });
   if (error) return { ok: false, message: error.message };
 
-  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const origin = getSiteUrl();
   return { ok: true, message: "Invite link created.", value: `${origin}/invite/${token}` };
 }
 

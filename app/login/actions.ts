@@ -2,10 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-
-function siteUrl() {
-  return process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-}
+import { getSiteUrl } from "@/lib/site-url";
 
 export async function loginWithGithub() {
   const supabase = await createClient();
@@ -13,7 +10,7 @@ export async function loginWithGithub() {
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "github",
-    options: { redirectTo: `${siteUrl()}/auth/callback` },
+    options: { redirectTo: `${getSiteUrl()}/auth/callback` },
   });
 
   if (error || !data.url) redirect("/login?error=oauth");
@@ -29,7 +26,7 @@ export async function sendMagicLink(formData: FormData) {
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: `${siteUrl()}/auth/callback` },
+    options: { emailRedirectTo: `${getSiteUrl()}/auth/callback` },
   });
 
   if (error) redirect("/login?error=magic-link");
