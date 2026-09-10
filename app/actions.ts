@@ -3,7 +3,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { canTransitionFeedbackStatus } from "@/lib/domain";
 import type { FeedbackStatus } from "@/lib/types";
@@ -295,34 +294,14 @@ export async function acceptInvite(token: string): Promise<ActionResult> {
   const auth = await authenticatedClient();
   if (!auth) return { ok: false, message: "Sign in before accepting an invitation." };
 
-  let admin;
-  try {
-    admin = createAdminClient();
-  } catch {
-    return unavailable;
-  }
   const tokenHash = createHash("sha256").update(token).digest("hex");
-  const { data: invite, error } = await admin
-    .from("workspace_invitations")
-    .select("id,workspace_id,role,expires_at,accepted_at")
-    .eq("token_hash", tokenHash)
-    .maybeSingle();
+  const { error } = await auth.supabase.rpc("accept_workspace_invitation", {
+    p_token_hash: tokenHash,
+  });
 
-  if (error || !invite || invite.accepted_at || new Date(invite.expires_at) < new Date()) {
+  if (error) {
     return { ok: false, message: "This invitation is invalid or expired." };
   }
-
-  const { error: memberError } = await admin.from("workspace_members").upsert({
-    workspace_id: invite.workspace_id,
-    user_id: auth.userId,
-    role: invite.role,
-  });
-  if (memberError) return { ok: false, message: memberError.message };
-
-  await admin
-    .from("workspace_invitations")
-    .update({ accepted_at: new Date().toISOString(), accepted_by: auth.userId })
-    .eq("id", invite.id);
 
   return { ok: true, message: "Invitation accepted." };
 }

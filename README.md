@@ -54,7 +54,6 @@ The marketing site and read-only demo work without environment variables. Persis
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
-SUPABASE_SECRET_KEY=
 ```
 
 For a local Supabase stack, install Docker and run:
