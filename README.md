@@ -37,6 +37,7 @@ The central workflow is:
 - React Flow for the evidence graph
 - Motion for React for restrained landing motion
 - Supabase Postgres, Auth, Row Level Security, Edge Functions and `pgvector`
+- Cloudflare Workers deployment through Vinext and Codex Sites
 - Zod validation, Vitest unit tests, Playwright E2E tests and pgTAP database tests
 - Self-hosted Geist Sans and Geist Mono
 
