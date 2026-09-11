@@ -5,6 +5,12 @@
 project_id = "pulseboard"
 
 [functions.embed-feedback]
+verify_jwt = true
+
+[functions.send-product-email]
+verify_jwt = true
+
+[functions.unsubscribe-feedback]
 verify_jwt = false
 
 [api]
@@ -427,3 +433,25 @@ entrypoint = "./functions/embed-feedback/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/embed-feedback/*.html" ]
+
+[functions.send-product-email]
+enabled = true
+verify_jwt = false
+import_map = "./functions/send-product-email/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/send-product-email/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/send-product-email/*.html" ]
+
+[functions.unsubscribe-feedback]
+enabled = true
+verify_jwt = false
+import_map = "./functions/unsubscribe-feedback/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/unsubscribe-feedback/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/unsubscribe-feedback/*.html" ]

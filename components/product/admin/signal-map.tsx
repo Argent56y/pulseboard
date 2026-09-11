@@ -3,12 +3,15 @@
 import { useMemo, useState, useTransition } from "react";
 import {
   Background,
+  BaseEdge,
   Controls,
+  getBezierPath,
   Handle,
   MarkerType,
   Position,
   ReactFlow,
   type Edge,
+  type EdgeProps,
   type Node,
   type NodeProps,
 } from "@xyflow/react";
@@ -24,6 +27,7 @@ type SignalNodeData = {
   meta: string;
   accent?: string;
   selected: boolean;
+  rings?: number;
 };
 type SignalNode = Node<SignalNodeData>;
 
@@ -37,6 +41,7 @@ function FeedbackNode({ data }: NodeProps<SignalNode>) {
 
 function ThemeNode({ data }: NodeProps<SignalNode>) {
   return <div className={`signal-node signal-node-theme ${data.selected ? "signal-node-selected" : ""}`}>
+    <span className="evidence-rings" aria-hidden="true">{Array.from({ length: data.rings ?? 1 }, (_, index) => <i key={index} />)}</span>
     <Handle className="node-handle" type="target" position={Position.Left} />
     <strong>{data.title}</strong><span>{data.meta}</span><em>signal cluster</em>
     <Handle className="node-handle" type="source" position={Position.Right} />
@@ -53,16 +58,28 @@ function RoadmapNode({ data }: NodeProps<SignalNode>) {
 const nodeTypes = { feedback: FeedbackNode, theme: ThemeNode, roadmap: RoadmapNode };
 const roadmapColors = { planned: "#d2aa70", in_progress: "#afc1c7", shipped: "#87b99a" };
 
+type EvidenceEdgeData = { state: "suggested" | "confirmed"; active: boolean };
+function EvidenceEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, style, data }: EdgeProps<Edge<EvidenceEdgeData>>) {
+  const [path] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
+  return <>
+    <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} className={`evidence-edge evidence-edge-${data?.state ?? "confirmed"} ${data?.active ? "evidence-edge-active" : ""}`} />
+    {data?.state === "suggested" && <circle className="edge-traveler" r="3" aria-hidden="true"><animateMotion dur="2.8s" repeatCount="indefinite" path={path} /></circle>}
+  </>;
+}
+const edgeTypes = { evidence: EvidenceEdge };
+
 interface SignalMapProps {
   graph: GraphData;
   readOnly?: boolean;
+  initialSelected?: string;
 }
 
-export function SignalMap({ graph, readOnly = false }: SignalMapProps) {
-  const [selectedId, setSelectedId] = useState(graph.roadmap[0]?.id ?? graph.themes[0]?.id ?? "");
+export function SignalMap({ graph, readOnly = false, initialSelected }: SignalMapProps) {
+  const [selectedId, setSelectedId] = useState(initialSelected ?? graph.roadmap[0]?.id ?? graph.themes[0]?.id ?? "");
   const [source, setSource] = useState<FeedbackSource | "all">("all");
   const [status, setStatus] = useState<FeedbackStatus | "all">("all");
   const [notice, setNotice] = useState("");
+  const [links, setLinks] = useState(graph.links);
   const [isPending, startTransition] = useTransition();
 
   const filteredFeedback = useMemo(() => graph.feedback.filter((post) =>
@@ -70,8 +87,8 @@ export function SignalMap({ graph, readOnly = false }: SignalMapProps) {
   ), [graph.feedback, source, status]);
 
   const visibleFeedback = useMemo(() => graph.themes.flatMap((theme) =>
-    filteredFeedback.filter((post) => graph.links.some((link) => link.feedbackId === post.id && link.themeId === theme.id)).slice(0, 2),
-  ), [filteredFeedback, graph.links, graph.themes]);
+    filteredFeedback.filter((post) => links.some((link) => link.feedbackId === post.id && link.themeId === theme.id)).slice(0, 2),
+  ), [filteredFeedback, links, graph.themes]);
 
   const linkedIds = useMemo(() => {
     const ids = new Set<string>([selectedId]);
@@ -80,37 +97,38 @@ export function SignalMap({ graph, readOnly = false }: SignalMapProps) {
     const selectedFeedback = graph.feedback.find((post) => post.id === selectedId);
     if (selectedRoadmap) {
       selectedRoadmap.themeIds.forEach((id) => ids.add(id));
-      graph.links.filter((link) => selectedRoadmap.themeIds.includes(link.themeId)).forEach((link) => ids.add(link.feedbackId));
+      links.filter((link) => selectedRoadmap.themeIds.includes(link.themeId)).forEach((link) => ids.add(link.feedbackId));
     }
     if (selectedTheme) {
-      graph.links.filter((link) => link.themeId === selectedTheme.id).forEach((link) => ids.add(link.feedbackId));
+      links.filter((link) => link.themeId === selectedTheme.id).forEach((link) => ids.add(link.feedbackId));
       graph.roadmap.filter((item) => item.themeIds.includes(selectedTheme.id)).forEach((item) => ids.add(item.id));
     }
     if (selectedFeedback) {
-      graph.links.filter((link) => link.feedbackId === selectedFeedback.id).forEach((link) => {
+      links.filter((link) => link.feedbackId === selectedFeedback.id).forEach((link) => {
         ids.add(link.themeId);
         graph.roadmap.filter((item) => item.themeIds.includes(link.themeId)).forEach((item) => ids.add(item.id));
       });
     }
     return ids;
-  }, [graph, selectedId]);
+  }, [graph, links, selectedId]);
 
   const { nodes, edges } = useMemo(() => {
     const nextNodes: SignalNode[] = [];
     const nextEdges: Edge[] = [];
     graph.themes.forEach((theme, themeIndex) => {
       const baseY = 34 + themeIndex * 120;
-      nextNodes.push({ id: theme.id, type: "theme", position: { x: 350, y: baseY }, data: { kind: "theme", title: theme.name, meta: `${theme.signalCount} signals · ${theme.velocity >= 0 ? "+" : ""}${theme.velocity}%`, selected: theme.id === selectedId } });
-      const posts = visibleFeedback.filter((post) => graph.links.some((link) => link.feedbackId === post.id && link.themeId === theme.id));
+      nextNodes.push({ id: theme.id, type: "theme", position: { x: 350, y: baseY }, data: { kind: "theme", title: theme.name, meta: `${theme.signalCount} signals · ${theme.velocity >= 0 ? "+" : ""}${theme.velocity}%`, selected: theme.id === selectedId, rings: Math.max(1, Math.min(4, Math.ceil(theme.signalCount / 3))) } });
+      const posts = visibleFeedback.filter((post) => links.some((link) => link.feedbackId === post.id && link.themeId === theme.id));
       posts.forEach((post, postIndex) => {
         const y = baseY - 18 + postIndex * 58;
         nextNodes.push({ id: post.id, type: "feedback", position: { x: 20, y }, data: { kind: "feedback", title: post.title, meta: `${sourceLabel(post.source)} · ${post.votes} votes`, selected: post.id === selectedId } });
-        const link = graph.links.find((candidate) => candidate.feedbackId === post.id && candidate.themeId === theme.id);
+        const link = links.find((candidate) => candidate.feedbackId === post.id && candidate.themeId === theme.id);
         if (link) nextEdges.push({
           id: link.id,
           source: post.id,
           target: theme.id,
-          animated: link.state === "suggested",
+          type: "evidence",
+          data: { state: link.state === "suggested" ? "suggested" : "confirmed", active: linkedIds.has(post.id) && linkedIds.has(theme.id) },
           markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12, color: linkedIds.has(post.id) && linkedIds.has(theme.id) ? "#d3e0e4" : "#718087" },
           style: {
             stroke: linkedIds.has(post.id) && linkedIds.has(theme.id) ? "#d3e0e4" : "rgba(113,128,135,.48)",
@@ -126,12 +144,14 @@ export function SignalMap({ graph, readOnly = false }: SignalMapProps) {
         id: `roadmap-${item.id}-${themeId}`,
         source: themeId,
         target: item.id,
+        type: "evidence",
+        data: { state: "confirmed", active: linkedIds.has(themeId) && linkedIds.has(item.id) },
         markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12, color: linkedIds.has(themeId) && linkedIds.has(item.id) ? roadmapColors[item.status] : "#718087" },
         style: { stroke: linkedIds.has(themeId) && linkedIds.has(item.id) ? roadmapColors[item.status] : "rgba(113,128,135,.42)", strokeWidth: linkedIds.has(themeId) && linkedIds.has(item.id) ? 2 : 1 },
       }));
     });
     return { nodes: nextNodes, edges: nextEdges };
-  }, [graph, linkedIds, selectedId, visibleFeedback]);
+  }, [graph, linkedIds, links, selectedId, visibleFeedback]);
 
   const selected = graph.feedback.find((item) => item.id === selectedId)
     ?? graph.themes.find((item) => item.id === selectedId)
@@ -145,6 +165,7 @@ export function SignalMap({ graph, readOnly = false }: SignalMapProps) {
     startTransition(async () => {
       const result = await reviewSuggestion({ linkId, state });
       setNotice(result.message);
+      if (result.ok) setLinks((current) => state === "rejected" ? current.filter((link) => link.id !== linkId) : current.map((link) => link.id === linkId ? { ...link, state: "confirmed" } : link));
     });
   }
 
@@ -172,6 +193,7 @@ export function SignalMap({ graph, readOnly = false }: SignalMapProps) {
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             onNodeClick={(_, node) => setSelectedId(node.id)}
             fitView
             fitViewOptions={{ padding: 0.22, maxZoom: 0.92 }}
@@ -187,14 +209,14 @@ export function SignalMap({ graph, readOnly = false }: SignalMapProps) {
           </ReactFlow>
         </div>
         <aside className="map-inspector" aria-label="Selected evidence details">
-          {selected ? <Inspector selected={selected} graph={graph} onReview={review} pending={isPending} /> : <div className="inspector-empty">Select a signal, theme or roadmap item to inspect its evidence path.</div>}
+          {selected ? <Inspector key={selectedId} selected={selected} graph={{ ...graph, links }} onReview={review} pending={isPending} /> : <div className="inspector-empty">Select a signal, theme or roadmap item to inspect its evidence path.</div>}
         </aside>
       </div>
 
       <div className="mobile-signal-list" aria-label="Accessible evidence paths">
         {graph.roadmap.map((roadmap) => roadmap.themeIds.map((themeId) => {
           const theme = graph.themes.find((item) => item.id === themeId);
-          const posts = graph.links.filter((link) => link.themeId === themeId && link.state !== "rejected").map((link) => graph.feedback.find((post) => post.id === link.feedbackId)).filter(Boolean) as FeedbackPost[];
+          const posts = links.filter((link) => link.themeId === themeId && link.state !== "rejected").map((link) => graph.feedback.find((post) => post.id === link.feedbackId)).filter(Boolean) as FeedbackPost[];
           return <article className="mobile-signal-path" key={`${roadmap.id}-${themeId}`}><span>feedback → theme → roadmap</span><h3>{roadmap.title}</h3><p>{posts.length} customer messages support “{theme?.name}”. {roadmap.summary}</p></article>;
         }))}
       </div>

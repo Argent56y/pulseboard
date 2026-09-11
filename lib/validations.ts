@@ -51,3 +51,36 @@ export const roadmapItemSchema = z.object({
   summary: z.string().trim().min(10).max(500),
   targetWindow: z.string().trim().min(2).max(40),
 });
+
+export const workspaceSettingsSchema = z.object({
+  workspaceId: z.string().uuid(),
+  name: z.string().trim().min(2).max(80),
+  description: z.string().trim().max(500),
+  isPublic: z.boolean(),
+});
+
+export const roadmapStatusSchema = z.object({
+  itemId: z.string().uuid(),
+  status: z.enum(["planned", "in_progress", "shipped"]),
+  confirmed: z.boolean().default(false),
+});
+
+export const changelogSchema = z.object({
+  id: z.string().uuid().optional(),
+  workspaceId: z.string().uuid(),
+  roadmapItemId: z.string().uuid().optional(),
+  title: z.string().trim().min(4).max(120),
+  body: z.string().trim().min(12).max(4000),
+  publish: z.boolean(),
+});
+
+export const importRowSchema = z.object({
+  title: z.string().trim().min(6).max(120),
+  body: z.string().trim().min(12).max(2000),
+  authorName: z.string().trim().max(80).optional(),
+  source: z.enum(["portal", "email", "interview", "support", "manual", "csv"]).default("csv"),
+  status: z.enum(["new", "under_review", "planned", "in_progress", "shipped", "closed"]).default("new"),
+  createdAt: z.string().datetime({ offset: true }).optional(),
+  externalId: z.string().trim().max(200).optional(),
+  rowIndex: z.number().int().min(1).max(1000),
+});

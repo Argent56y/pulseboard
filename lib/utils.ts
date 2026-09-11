@@ -41,6 +41,8 @@ export function sourceLabel(source: FeedbackSource) {
     email: "Email",
     interview: "Interview",
     support: "Support",
+    manual: "Manual",
+    csv: "CSV import",
   }[source];
 }
 

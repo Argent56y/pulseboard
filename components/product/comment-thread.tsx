@@ -1,9 +1,11 @@
 "use client";
 
+import { usePathname, useRouter } from "next/navigation";
 import { useActionState } from "react";
 import { addComment, type ActionResult } from "@/app/actions";
 import type { FeedbackComment } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
+import { rememberPendingAction } from "@/lib/pending-actions";
 
 const initialState: ActionResult = { ok: false, message: "" };
 
@@ -16,8 +18,17 @@ export function CommentThread({
   comments: FeedbackComment[];
   readOnly: boolean;
 }) {
+  const pathname = usePathname();
+  const router = useRouter();
   const [state, action, pending] = useActionState(
-    async (_state: ActionResult, formData: FormData) => addComment(formData),
+    async (_state: ActionResult, formData: FormData) => {
+      const result = await addComment(formData);
+      if (!result.ok && result.message.includes("Sign in")) {
+        rememberPendingAction({ type: "comment", feedbackId, body: String(formData.get("body") ?? ""), returnTo: pathname });
+        router.push(`/login?next=${encodeURIComponent(pathname)}`);
+      }
+      return result;
+    },
     initialState,
   );
 

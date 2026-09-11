@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
 import { SettingsPanel } from "@/components/product/admin/settings-panel";
-import { getThemes, getWorkspace } from "@/lib/data";
-export default async function SettingsPage({ params }: { params: Promise<{ workspaceSlug: string }> }) { const { workspaceSlug } = await params; const [workspace, themes] = await Promise.all([getWorkspace(workspaceSlug), getThemes(workspaceSlug)]); if (!workspace) notFound(); return <SettingsPanel workspace={workspace} themes={themes} />; }
+import { getViewer, getViewerWorkspaces } from "@/lib/auth";
+import { getThemes, getWorkspace, getWorkspaceInvitations, getWorkspaceMembers } from "@/lib/data";
+export default async function SettingsPage({ params }: { params: Promise<{ workspaceSlug: string }> }) { const { workspaceSlug } = await params; const [workspace, themes, members, invitations, viewer, memberships] = await Promise.all([getWorkspace(workspaceSlug), getThemes(workspaceSlug), getWorkspaceMembers(workspaceSlug), getWorkspaceInvitations(workspaceSlug), getViewer(), getViewerWorkspaces()]); if (!workspace || !viewer) notFound(); const currentRole = memberships.find((item) => item.workspace.id === workspace.id)?.role; if (!currentRole) notFound(); return <SettingsPanel workspace={workspace} themes={themes} members={members} invitations={invitations} currentUserId={viewer.id} currentRole={currentRole} />; }

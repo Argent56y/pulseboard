@@ -1,34 +1,35 @@
-import { Copy, LockKeyhole, Plus, Users } from "lucide-react";
-import { createInvite, createTheme } from "@/app/actions";
-import type { Theme, Workspace } from "@/lib/types";
+"use client";
 
-export function SettingsPanel({ workspace, themes }: { workspace: Workspace; themes: Theme[] }) {
-  async function submitTheme(formData: FormData) { "use server"; await createTheme(formData); }
-  async function submitInvite(formData: FormData) { "use server"; await createInvite(formData); }
+import { Copy, Link2, LockKeyhole, Plus, Trash2, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { FormEvent, useState, useTransition } from "react";
+import { createInvite, createTheme, deleteTheme, deleteWorkspace, removeMember, revokeInvite, updateMemberRole, updateTheme, updateWorkspaceSettings } from "@/app/actions";
+import type { Theme, Workspace, WorkspaceInvitation, WorkspaceMember, WorkspaceRole } from "@/lib/types";
+import { formatDate } from "@/lib/utils";
+
+export function SettingsPanel({ workspace, themes, members, invitations, currentUserId, currentRole }: { workspace: Workspace; themes: Theme[]; members: WorkspaceMember[]; invitations: WorkspaceInvitation[]; currentUserId: string; currentRole: WorkspaceRole }) {
+  const router = useRouter();
+  const [notice, setNotice] = useState("");
+  const [inviteLink, setInviteLink] = useState("");
+  const [deleteValue, setDeleteValue] = useState("");
+  const [pending, startTransition] = useTransition();
+  const isOwner = currentRole === "owner";
+
+  function run(task: () => Promise<{ ok: boolean; message: string }>) { startTransition(async () => { const result = await task(); setNotice(result.message); if (result.ok) router.refresh(); }); }
+  function submitWorkspace(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); run(() => updateWorkspaceSettings(data)); }
+  function submitTheme(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = event.currentTarget; run(async () => { const result = await createTheme(new FormData(form)); if (result.ok) form.reset(); return result; }); }
+  function editTheme(event: FormEvent<HTMLFormElement>) { event.preventDefault(); run(() => updateTheme(new FormData(event.currentTarget))); }
+  function makeInvite(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); startTransition(async () => { const result = await createInvite(data); setNotice(result.message); if (result.ok && result.value) { setInviteLink(result.value); await navigator.clipboard?.writeText(result.value).catch(() => undefined); router.refresh(); } }); }
+  async function copy(value: string) { await navigator.clipboard.writeText(value); setNotice("Copied to clipboard."); }
 
   return <section className="app-section settings-grid">
-    <div>
-      <div className="settings-section">
-        <h2>Public board</h2><p>What customers see when they share ideas and follow your roadmap.</p>
-        <div className="form-stack">
-          <div className="form-field"><label>Workspace name</label><input defaultValue={workspace.name} readOnly /></div>
-          <div className="form-field"><label>Public URL</label><div className="copy-field"><input value={`/feedback/${workspace.slug}`} readOnly /><button type="button" aria-label="Copy public URL"><Copy size={14} /></button></div></div>
-          <div className="form-field"><label>Description</label><textarea defaultValue={workspace.description} readOnly /></div>
-        </div>
-      </div>
-      <div className="settings-section">
-        <h2>Signal themes</h2><p>Human-readable clusters used by the map and roadmap.</p>
-        <div className="settings-theme-list">{themes.map((theme) => <div key={theme.id}><span>{theme.name}</span><small>{theme.signalCount} signals</small></div>)}</div>
-        <details className="inline-create"><summary className="button button-small button-outline"><Plus size={13} /> Add theme</summary><form action={submitTheme} className="popover-form"><input type="hidden" name="workspaceId" value={workspace.id} /><label>Name<input name="name" required minLength={3} /></label><label>Description<textarea name="description" required minLength={8} /></label><button className="button button-small button-primary" type="submit">Create theme</button></form></details>
-      </div>
+    <div>{notice && <p className="inline-notice" role="status">{notice}</p>}
+      <div className="settings-section"><h2>Public board</h2><p>What customers see when they share ideas and follow your roadmap.</p><form onSubmit={submitWorkspace} className="form-stack"><input type="hidden" name="workspaceId" value={workspace.id} /><div className="form-field"><label htmlFor="workspace-settings-name">Workspace name</label><input id="workspace-settings-name" name="name" defaultValue={workspace.name} disabled={!isOwner} /></div><div className="form-field"><label>Public URL</label><div className="copy-field"><input value={`/feedback/${workspace.slug}`} readOnly /><button type="button" onClick={() => copy(`${window.location.origin}/feedback/${workspace.slug}`)} aria-label="Copy public URL"><Copy size={14} /></button></div></div><div className="form-field"><label htmlFor="workspace-settings-description">Description</label><textarea id="workspace-settings-description" name="description" defaultValue={workspace.description} disabled={!isOwner} /></div><label className="checkbox-row"><input name="isPublic" type="checkbox" defaultChecked={workspace.isPublic} disabled={!isOwner} /> Publicly visible feedback board</label>{isOwner && <button className="button button-small button-primary" disabled={pending}>Save board settings</button>}</form></div>
+      <div className="settings-section"><h2>Signal themes</h2><p>Human-readable clusters used by the map and roadmap.</p><div className="settings-theme-list">{themes.map((theme) => <details key={theme.id}><summary><span>{theme.name}</span><small>{theme.signalCount} signals</small></summary><form onSubmit={editTheme} className="popover-form"><input type="hidden" name="workspaceId" value={workspace.id} /><input type="hidden" name="themeId" value={theme.id} /><label>Name<input name="name" defaultValue={theme.name} required minLength={3} /></label><label>Description<textarea name="description" defaultValue={theme.description} required minLength={8} /></label><div className="form-actions"><button className="button button-small button-primary" disabled={pending}>Save</button><button className="button button-small button-outline" type="button" disabled={pending || theme.signalCount > 0} onClick={() => run(() => deleteTheme(theme.id))}><Trash2 size={12} /> Delete empty theme</button></div></form></details>)}</div><details className="inline-create"><summary className="button button-small button-outline"><Plus size={13} /> Add theme</summary><form onSubmit={submitTheme} className="popover-form"><input type="hidden" name="workspaceId" value={workspace.id} /><label>Name<input name="name" required minLength={3} /></label><label>Description<textarea name="description" required minLength={8} /></label><button className="button button-small button-primary" disabled={pending}>Create theme</button></form></details></div>
     </div>
-    <aside>
-      <div className="settings-section">
-        <h2><Users size={16} /> Members</h2><p>Invite editors to triage feedback and maintain the roadmap.</p>
-        <div className="member-row"><span className="avatar-small">SD</span><div><strong>Seva Dev-a</strong><small>Owner</small></div></div>
-        <form action={submitInvite} className="form-stack invite-form"><input type="hidden" name="workspaceId" value={workspace.id} /><div className="form-field"><label>Invite role</label><select name="role"><option value="editor">Editor</option><option value="owner">Owner</option></select></div><button className="button button-primary" type="submit">Create invite link</button></form>
-      </div>
-      <div className="security-note"><LockKeyhole size={16} /><div><strong>Workspace isolation</strong><p>Membership and row-level policies protect every private record.</p></div></div>
+    <aside><div className="settings-section"><h2><Users size={16} /> Members</h2><p>Editors can triage feedback and maintain product communication.</p><div className="members-list">{members.map((member) => <div className="member-row" key={member.userId}>{member.avatarUrl ? <img className="avatar-small" src={member.avatarUrl} alt="" /> : <span className="avatar-small">{member.displayName.slice(0, 2).toUpperCase()}</span>}<div><strong>{member.displayName}{member.userId === currentUserId ? " (you)" : ""}</strong><small>Joined {formatDate(member.joinedAt)}</small></div>{isOwner && member.userId !== currentUserId ? <><select value={member.role} disabled={pending} onChange={(event) => run(() => updateMemberRole(workspace.id, member.userId, event.target.value as WorkspaceRole))}><option value="editor">Editor</option><option value="owner">Owner</option></select><button type="button" disabled={pending} onClick={() => run(() => removeMember(workspace.id, member.userId))} aria-label={`Remove ${member.displayName}`}><Trash2 size={13} /></button></> : <span className="member-role">{member.role}</span>}</div>)}</div>{isOwner && <form onSubmit={makeInvite} className="form-stack invite-form"><input type="hidden" name="workspaceId" value={workspace.id} /><div className="form-field"><label>Invite role</label><select name="role"><option value="editor">Editor</option><option value="owner">Owner</option></select></div><button className="button button-primary" disabled={pending}>Create invite link</button></form>}{inviteLink && <div className="invite-created"><Link2 size={14} /><span><strong>Copied invite link</strong><small>{inviteLink}</small></span><button type="button" onClick={() => copy(inviteLink)}><Copy size={13} /></button></div>}{invitations.length > 0 && <div className="invite-list"><span className="app-kicker">Invite history</span>{invitations.map((invite) => <div key={invite.id}><span><strong>{invite.role}</strong><small>{invite.isActive ? `Expires ${formatDate(invite.expiresAt)}` : invite.acceptedAt ? "Accepted" : invite.revokedAt ? "Revoked" : "Expired"}</small></span>{invite.isActive && isOwner && <button type="button" onClick={() => run(() => revokeInvite(invite.id))}>Revoke</button>}</div>)}</div>}</div>
+      <div className="security-note"><LockKeyhole size={16} /><div><strong>Workspace isolation</strong><p>Membership checks and row-level policies protect every private record.</p></div></div>
+      {isOwner && <div className="settings-section danger-zone"><h2>Delete workspace</h2><p>This permanently removes the workspace and its feedback. Type <strong>{workspace.slug}</strong> to confirm.</p><input value={deleteValue} onChange={(event) => setDeleteValue(event.target.value)} placeholder={workspace.slug} /><button className="button button-danger" type="button" disabled={pending || deleteValue !== workspace.slug} onClick={() => run(() => deleteWorkspace(workspace.id, deleteValue))}>Delete workspace</button></div>}
     </aside>
   </section>;
 }
