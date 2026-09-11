@@ -28,6 +28,37 @@ test("founder demo renders an inspectable signal map", async ({ page, isMobile }
   await expect(page.getByRole("heading", { name: "Controlled collaboration" })).toBeVisible();
 });
 
+test("founder demo navigation keeps the workspace shell in place", async ({ page, isMobile }) => {
+  await page.goto("/demo/app/map");
+
+  const shell = page.locator(".app-shell");
+  await expect(shell).toHaveAttribute("data-navigation-ready", "true");
+  if (!isMobile) {
+    await shell.evaluate((element) => Reflect.set(element, "__workspaceShellIdentity", "persistent"));
+    await page.getByRole("button", { name: "Collapse sidebar" }).click();
+    await expect(shell).toHaveAttribute("data-collapsed", "true");
+  }
+
+  await page.getByRole("link", { name: "Inbox" }).click();
+  await expect(page).toHaveURL(/\/demo\/app\/inbox$/);
+  await expect(page.getByRole("heading", { name: "Feedback inbox" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Customer signals" })).toBeVisible();
+  if (!isMobile) {
+    expect(await shell.evaluate((element) => Reflect.get(element, "__workspaceShellIdentity"))).toBe("persistent");
+    await expect(shell).toHaveAttribute("data-collapsed", "true");
+  }
+
+  await page.getByRole("link", { name: "Roadmap" }).click();
+  await expect(page).toHaveURL(/\/demo\/app\/roadmap$/);
+  await expect(page.getByRole("heading", { name: "Product direction" })).toBeVisible();
+
+  await page.getByRole("link", { name: "Changelog" }).click();
+  await expect(page).toHaveURL(/\/demo\/app\/changelog$/);
+  await expect(page.getByRole("heading", { name: "Published updates" })).toBeVisible();
+  await expect(page.getByText("Publishing is disabled in the demo.")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
 test("mobile founder demo exposes the linear evidence fallback", async ({ page, isMobile }) => {
   test.skip(!isMobile, "mobile-only acceptance check");
   await page.goto("/demo/app/map");
