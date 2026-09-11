@@ -174,7 +174,7 @@ export function SignalMap({ graph, readOnly = false }: SignalMapProps) {
             nodeTypes={nodeTypes}
             onNodeClick={(_, node) => setSelectedId(node.id)}
             fitView
-            fitViewOptions={{ padding: 0.13 }}
+            fitViewOptions={{ padding: 0.22, maxZoom: 0.92 }}
             minZoom={0.35}
             maxZoom={1.35}
             nodesDraggable

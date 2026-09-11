@@ -28,10 +28,11 @@ export function HeroSignalCanvas() {
         <path className="hero-map-line-active" d="M530 250 C680 250 690 250 825 250" />
       </svg>
 
-      {signals.map((signal) => (
+      {signals.map((signal, index) => (
         <motion.div
           key={signal.label}
           className="hero-signal"
+          data-signal-index={index}
           style={{ left: `${signal.x}%`, top: `${signal.y}%` }}
           initial={reduceMotion ? false : { opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
