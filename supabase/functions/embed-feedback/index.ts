@@ -9,9 +9,14 @@ type AnalysisJob = {
   entity?: "feedback_posts" | "themes";
 };
 
+type QueuePayload = {
+  jobs: AnalysisJob[];
+  queueSecret?: string;
+};
+
 const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-pulseboard-queue",
 };
 
 const json = (body: unknown, status = 200, extra: Record<string, string> = {}) => new Response(JSON.stringify(body), {
@@ -40,25 +45,36 @@ Deno.serve(async (request) => {
   const url = Deno.env.get("SUPABASE_URL");
   const publishableKey = Deno.env.get("SB_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY");
   const secretKey = Deno.env.get("SUPABASE_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!token || !url || !publishableKey || !secretKey) return json({ error: "Function is not configured" }, 401);
+  if (!url || !publishableKey || !secretKey) return json({ error: "Function is not configured" }, 500);
 
-  const userClient = createClient(url, publishableKey, { global: { headers: { Authorization: authorization! } }, auth: { persistSession: false } });
   const admin = createClient(url, secretKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data: claimsResult, error: claimsError } = await userClient.auth.getClaims(token);
-  const claims = claimsResult?.claims;
-  if (claimsError || !claims) return json({ error: "Invalid token" }, 401);
-
-  const body = await request.json().catch(() => null) as AnalysisJob[] | { feedbackId?: string } | null;
-  const queueRequest = Array.isArray(body);
+  const body = await request.json().catch(() => null) as AnalysisJob[] | QueuePayload | { feedbackId?: string } | null;
+  const queueJobs = Array.isArray(body)
+    ? body
+    : body && "jobs" in body && Array.isArray(body.jobs)
+      ? body.jobs
+      : null;
+  const queueRequest = queueJobs !== null;
   let jobs: AnalysisJob[];
   if (queueRequest) {
-    const role = typeof claims.role === "string" ? claims.role : "";
-    const queueSecret = request.headers.get("x-pulseboard-queue") ?? "";
-    const { data: validWorkerSecret } = await userClient.rpc("validate_worker_secret", { p_secret: queueSecret });
-    if (role !== "service_role" && validWorkerSecret !== true) return json({ error: "Queue invocation denied" }, 403);
-    jobs = body.slice(0, 20).filter((job) => typeof job?.id === "string" && ["feedback_posts", "themes"].includes(job.entity ?? "feedback_posts"));
+    const queueSecret = request.headers.get("x-pulseboard-queue")
+      ?? (!Array.isArray(body) && body && "queueSecret" in body ? body.queueSecret : "")
+      ?? "";
+    if (!queueSecret) return json({ error: "Queue secret missing" }, 403);
+    const { data: validWorkerSecret, error: workerSecretError } = await admin.rpc("validate_worker_secret", { p_secret: queueSecret });
+    if (workerSecretError) {
+      console.error("queue-secret-validation-failed", { code: workerSecretError.code, message: workerSecretError.message });
+      return json({ error: "Queue secret validation failed", code: workerSecretError.code }, 500);
+    }
+    if (validWorkerSecret !== true) return json({ error: "Queue invocation denied" }, 403);
+    jobs = queueJobs.slice(0, 20).filter((job) => typeof job?.id === "string" && ["feedback_posts", "themes"].includes(job.entity ?? "feedback_posts"));
   } else {
-    const feedbackId = body?.feedbackId;
+    if (!authorization || !token) return json({ error: "Authentication required" }, 401);
+    const userClient = createClient(url, publishableKey, { global: { headers: { Authorization: authorization } }, auth: { persistSession: false } });
+    const { data: claimsResult, error: claimsError } = await userClient.auth.getClaims(token);
+    const claims = claimsResult?.claims;
+    if (claimsError || !claims) return json({ error: "Invalid token" }, 401);
+    const feedbackId = body && !Array.isArray(body) && "feedbackId" in body ? body.feedbackId : undefined;
     const userId = claims.sub;
     if (!feedbackId || typeof userId !== "string") return json({ error: "feedbackId and user session are required" }, 400);
     const { data: feedback } = await userClient.from("feedback_posts").select("id,workspace_id,author_id").eq("id", feedbackId).maybeSingle();
@@ -93,7 +109,11 @@ Deno.serve(async (request) => {
         if (themes.error) throw themes.error;
         if (duplicates.error) throw duplicates.error;
       }
-      if (job.jobId) await admin.rpc("delete_analysis_job", { p_msg_id: job.jobId });
+      if (job.jobId) {
+        const { data: deleted, error: deleteError } = await admin.rpc("delete_analysis_job", { p_msg_id: job.jobId });
+        if (deleteError) throw deleteError;
+        if (deleted !== true) throw new Error("Analysis queue job could not be acknowledged");
+      }
       completed.push(job);
     } catch (error) {
       const message = errorMessage(error);
@@ -104,7 +124,10 @@ Deno.serve(async (request) => {
       } else {
         await admin.from("feedback_posts").update({ embedding_state: finalAttempt ? "failed" : "pending", embedding_error: message.slice(0, 500) }).eq("id", job.id);
       }
-      if (finalAttempt && job.jobId) await admin.rpc("delete_analysis_job", { p_msg_id: job.jobId });
+      if (finalAttempt && job.jobId) {
+        const { error: deleteError } = await admin.rpc("delete_analysis_job", { p_msg_id: job.jobId });
+        if (deleteError) console.error("analysis-job-delete-failed", { jobId: job.jobId, code: deleteError.code });
+      }
       failed.push({ ...job, error: message });
     }
   }
