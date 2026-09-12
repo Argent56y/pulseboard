@@ -19,6 +19,18 @@ const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =
   headers: { ...cors, "Content-Type": "application/json", ...extra },
 });
 
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const value = error as Record<string, unknown>;
+    return [value.code, value.message, value.details, value.hint]
+      .filter((part): part is string => typeof part === "string" && part.length > 0)
+      .join(": ") || "Embedding failed";
+  }
+  return "Embedding failed";
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -84,7 +96,8 @@ Deno.serve(async (request) => {
       if (job.jobId) await admin.rpc("delete_analysis_job", { p_msg_id: job.jobId });
       completed.push(job);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Embedding failed";
+      const message = errorMessage(error);
+      console.error("analysis-job-failed", { id: job.id, entity: job.entity ?? "feedback_posts", message });
       const finalAttempt = (job.readCount ?? 0) >= 5;
       if (job.entity === "themes") {
         await admin.from("themes").update({ embedding_state: finalAttempt ? "failed" : "pending" }).eq("id", job.id);
