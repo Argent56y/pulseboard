@@ -17,6 +17,12 @@ const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"]/g, (c
 
 Deno.serve(async (request) => {
   if (request.method !== "POST") return Response.json({ error: "Method not allowed" }, { status: 405 });
+  let requestBody: { queueSecret?: unknown } = {};
+  try {
+    requestBody = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid request body" }, { status: 400 });
+  }
   const url = Deno.env.get("SUPABASE_URL");
   const publishableKey = Deno.env.get("SB_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY");
   const secretKey = Deno.env.get("SUPABASE_SECRET_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -27,7 +33,8 @@ Deno.serve(async (request) => {
 
   const authorization = request.headers.get("Authorization") ?? "";
   const publicClient = createClient(url, publishableKey, { global: { headers: { Authorization: authorization } }, auth: { persistSession: false } });
-  const queueSecret = request.headers.get("x-pulseboard-queue") ?? "";
+  const bodyQueueSecret = typeof requestBody.queueSecret === "string" ? requestBody.queueSecret : "";
+  const queueSecret = request.headers.get("x-pulseboard-queue") ?? bodyQueueSecret;
   const { data: validWorkerSecret } = await publicClient.rpc("validate_worker_secret", { p_secret: queueSecret });
   if (validWorkerSecret !== true) return Response.json({ error: "Worker authentication failed" }, { status: 403 });
   if (!resendKey || !sender) return Response.json({ error: "Resend is not configured" }, { status: 503 });
