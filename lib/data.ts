@@ -232,20 +232,11 @@ export const getRoadmap = cache(async (slug: string): Promise<RoadmapItem[]> => 
   const supabase = await createClient();
   if (!workspace || !supabase) return [];
 
-  const { data, error } = await supabase
-    .from("roadmap_items")
-    .select("id,workspace_id,title,summary,status,target_window,roadmap_theme_links(theme_id)")
-    .eq("workspace_id", workspace.id)
-    .order("sort_order", { ascending: true });
+  const { data, error } = await supabase.rpc("list_roadmap", {
+    p_workspace_id: workspace.id,
+  });
 
   if (error || !data) return [];
-  const themeIds = data.flatMap((row) => (row.roadmap_theme_links ?? []).map((link) => link.theme_id));
-  const { data: confirmedLinks } = themeIds.length ? await supabase
-    .from("feedback_theme_links")
-    .select("feedback_id,theme_id")
-    .eq("workspace_id", workspace.id)
-    .eq("state", "confirmed")
-    .in("theme_id", themeIds) : { data: [] };
   return data.map((row) => ({
     id: row.id,
     workspaceId: row.workspace_id,
@@ -253,8 +244,8 @@ export const getRoadmap = cache(async (slug: string): Promise<RoadmapItem[]> => 
     summary: row.summary,
     status: row.status as RoadmapStatus,
     targetWindow: row.target_window,
-    themeIds: (row.roadmap_theme_links ?? []).map((link) => link.theme_id),
-    feedbackCount: new Set((confirmedLinks ?? []).filter((link) => (row.roadmap_theme_links ?? []).some((theme) => theme.theme_id === link.theme_id)).map((link) => link.feedback_id)).size,
+    themeIds: row.theme_ids ?? [],
+    feedbackCount: Number(row.feedback_count ?? 0),
   }));
 });
 

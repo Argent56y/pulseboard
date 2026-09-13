@@ -933,6 +933,11 @@ export type Database = {
         }[]
       }
       complete_email_job: { Args: { p_id: number }; Returns: undefined }
+      create_unsubscribe_token: {
+        Args: { p_subscription_id: string }
+        Returns: string
+      }
+      delete_analysis_job: { Args: { p_msg_id: number }; Returns: boolean }
       fail_email_job: {
         Args: { p_error: string; p_id: number }
         Returns: undefined
@@ -1010,6 +1015,20 @@ export type Database = {
           workspace_id: string
         }[]
       }
+      list_roadmap: {
+        Args: { p_workspace_id: string }
+        Returns: {
+          feedback_count: number
+          id: string
+          status: Database["public"]["Enums"]["roadmap_status"]
+          summary: string
+          target_window: string
+          theme_ids: string[]
+          title: string
+          workspace_id: string
+        }[]
+      }
+      unsubscribe_feedback: { Args: { p_token: string }; Returns: boolean }
       update_roadmap_status: {
         Args: {
           p_confirm?: boolean
@@ -1021,6 +1040,7 @@ export type Database = {
           updated: boolean
         }[]
       }
+      validate_worker_secret: { Args: { p_secret: string }; Returns: boolean }
     }
     Enums: {
       embedding_state: "pending" | "ready" | "failed"
