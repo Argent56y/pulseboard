@@ -360,15 +360,31 @@ export async function acceptInvite(token: string): Promise<ActionResult> {
   if (!auth) return { ok: false, message: "Sign in before accepting an invitation." };
 
   const tokenHash = createHash("sha256").update(token).digest("hex");
-  const { error } = await auth.supabase.rpc("accept_workspace_invitation", {
+  const { data, error } = await auth.supabase.rpc("accept_workspace_invitation", {
     p_token_hash: tokenHash,
   });
 
   if (error) {
+    if (error.message.includes("Already a workspace member")) {
+      return { ok: true, message: "You already belong to this workspace.", value: "/app" };
+    }
     return { ok: false, message: "This invitation is invalid or expired." };
   }
 
-  return { ok: true, message: "Invitation accepted." };
+  const acceptedWorkspaceId = data?.[0]?.workspace_id;
+  if (!acceptedWorkspaceId) return { ok: true, message: "Invitation accepted.", value: "/app" };
+
+  const { data: workspace } = await auth.supabase
+    .from("workspaces")
+    .select("slug")
+    .eq("id", acceptedWorkspaceId)
+    .maybeSingle();
+
+  return {
+    ok: true,
+    message: "Invitation accepted.",
+    value: workspace ? `/app/${workspace.slug}/inbox` : "/app",
+  };
 }
 
 export async function signOut(): Promise<void> {
