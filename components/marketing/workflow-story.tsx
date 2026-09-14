@@ -2,51 +2,35 @@
 
 import { useRef } from "react";
 import { motion, useScroll, useTransform } from "motion/react";
+import { marketingCopy, type Locale } from "@/lib/i18n";
 
-const steps = [
-  {
-    number: "01",
-    title: "Capture the language",
-    body: "Collect requests from your public portal, interviews, support and email without stripping away context.",
-  },
-  {
-    number: "02",
-    title: "Find the pattern",
-    body: "Semantic suggestions surface related signals. Your team confirms what belongs together.",
-  },
-  {
-    number: "03",
-    title: "Show the decision",
-    body: "Connect a theme to roadmap work, publish the status and keep the original evidence one click away.",
-  },
-];
-
-export function WorkflowStory() {
+export function WorkflowStory({ locale = "en" }: { locale?: Locale }) {
+  const copy = marketingCopy[locale];
   const ref = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "end start"] });
   const lineScale = useTransform(scrollYProgress, [0.15, 0.78], [0, 1]);
 
   return (
     <section ref={ref} className="workflow-section section-shell" aria-labelledby="workflow-title">
-      <div className="section-index">02 / WORKFLOW</div>
+      <div className="section-index">{copy.workflowIndex}</div>
       <div className="workflow-layout">
         <div className="workflow-intro">
-          <p className="eyebrow">From request to release</p>
-          <h2 id="workflow-title">A calm path through noisy feedback.</h2>
+          <p className="eyebrow">{copy.workflowEyebrow}</p>
+          <h2 id="workflow-title">{copy.workflowTitle}</h2>
         </div>
         <div className="workflow-steps">
           <motion.div className="workflow-progress" style={{ scaleY: lineScale }} />
-          {steps.map((step) => (
+          {copy.steps.map((step, index) => (
             <motion.article
-              key={step.number}
+              key={step[0]}
               className="workflow-step"
               initial={{ opacity: 0.35 }}
               whileInView={{ opacity: 1 }}
               viewport={{ amount: 0.6 }}
             >
-              <span>{step.number}</span>
-              <h3>{step.title}</h3>
-              <p>{step.body}</p>
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              <h3>{step[0]}</h3>
+              <p>{step[1]}</p>
             </motion.article>
           ))}
         </div>

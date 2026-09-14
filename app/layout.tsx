@@ -4,7 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://pulseboard.sevadeva.tech"),
   title: {
     default: "Pulseboard — Feedback you can explain",
     template: "%s · Pulseboard",
@@ -17,6 +17,10 @@ export const metadata: Metadata = {
     type: "website",
   },
   twitter: { card: "summary_large_image" },
+  alternates: {
+    canonical: "/",
+    languages: { "en-US": "/", "ru-RU": "/ru" },
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

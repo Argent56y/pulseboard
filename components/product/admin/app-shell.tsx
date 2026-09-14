@@ -19,6 +19,8 @@ import {
 import { type MouseEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { signOut } from "@/app/actions";
 import type { CommandItem, ViewerProfile, Workspace, WorkspaceMembership, WorkspaceRole } from "@/lib/types";
+import { LocaleSwitch } from "@/components/locale-switch";
+import { localizedPath, type Locale } from "@/lib/i18n";
 
 interface AppShellProps {
   workspace: Workspace;
@@ -27,6 +29,7 @@ interface AppShellProps {
   memberships?: WorkspaceMembership[];
   commands?: CommandItem[];
   readOnly?: boolean;
+  locale?: Locale;
   children: React.ReactNode;
 }
 
@@ -38,7 +41,7 @@ const routeMeta = [
   { segment: "/settings", label: "Settings", kicker: "Workspace" },
 ];
 
-export function AppShell({ workspace, role = "owner", viewer, memberships = [], commands = [], readOnly = false, children }: AppShellProps) {
+export function AppShell({ workspace, role = "owner", viewer, memberships = [], commands = [], readOnly = false, locale = "en", children }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const shellRef = useRef<HTMLDivElement>(null);
@@ -47,12 +50,20 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
   const [navigationPending, startNavigation] = useTransition();
   const [commandQuery, setCommandQuery] = useState("");
   const commandRef = useRef<HTMLDialogElement>(null);
-  const appRoot = readOnly ? "/demo/app" : `/app/${workspace.slug}`;
-  const publicRoot = workspace.slug === "demo" ? "/demo" : `/feedback/${workspace.slug}`;
-  const current = useMemo(
-    () => routeMeta.find((route) => pathname.includes(route.segment)) ?? routeMeta[1],
-    [pathname],
-  );
+  const appRoot = readOnly ? localizedPath(locale, "/demo/app") : `/app/${workspace.slug}`;
+  const publicRoot = localizedPath(locale, workspace.slug === "demo" ? "/demo" : `/feedback/${workspace.slug}`);
+  const current = useMemo(() => {
+    const found = routeMeta.find((route) => pathname.includes(route.segment)) ?? routeMeta[1];
+    if (locale === "en") return found;
+    const ru = {
+      "/inbox": { label: "Входящие отзывы", kicker: "Разбор" },
+      "/map": { label: "Signal Map", kicker: "Карта доказательств" },
+      "/roadmap": { label: "Roadmap", kicker: "Направление продукта" },
+      "/changelog": { label: "Обновления", kicker: "Заметки о релизах" },
+      "/settings": { label: "Настройки", kicker: "Workspace" },
+    } as const;
+    return { ...found, ...ru[found.segment as keyof typeof ru] };
+  }, [pathname, locale]);
 
   useEffect(() => {
     const shell = shellRef.current;
@@ -80,12 +91,15 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
   const initials = viewer?.displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "SD";
 
   const nav = readOnly
-    ? [
+    ? (locale === "ru" ? [
+        { label: "Входящие", href: `${appRoot}/inbox`, icon: ClipboardList },
+        { label: "Signal Map", href: `${appRoot}/map`, icon: Map },
+      ] : [
         { label: "Inbox", href: `${appRoot}/inbox`, icon: ClipboardList },
         { label: "Signal Map", href: `${appRoot}/map`, icon: Map },
         { label: "Roadmap", href: `${appRoot}/roadmap`, icon: GitBranch },
         { label: "Changelog", href: `${appRoot}/changelog`, icon: Megaphone },
-      ]
+      ])
     : [
         { label: "Inbox", href: `${appRoot}/inbox`, icon: ClipboardList },
         { label: "Signal Map", href: `${appRoot}/map`, icon: Map },
@@ -112,9 +126,9 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
     <div className="app-page">
       <a className="skip-link" href="#main-content">Skip to content</a>
       <div ref={shellRef} className="app-shell" data-collapsed={collapsed}>
-        <aside className="app-sidebar" aria-label="Workspace navigation">
+        <aside className="app-sidebar" aria-label={locale === "ru" ? "Навигация workspace" : "Workspace navigation"}>
           <div className="app-sidebar-brand">
-            <Link className="wordmark" href="/">
+            <Link className="wordmark" href={localizedPath(locale, "/")}>
               <span className="wordmark-dot" />
               <span>Pulseboard</span>
             </Link>
@@ -130,7 +144,7 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
 
           {readOnly ? <div className="workspace-switcher">
             <div className="workspace-mark">{workspace.name.slice(0, 1)}</div>
-            <div><strong>{workspace.name}</strong><span>Sample workspace</span></div>
+            <div><strong>{workspace.name}</strong><span>{locale === "ru" ? "Демо с вымышленными данными" : "Sample workspace"}</span></div>
           </div> : <details className="workspace-menu">
             <summary className="workspace-switcher">
               <div className="workspace-mark">{workspace.name.slice(0, 1)}</div>
@@ -146,7 +160,7 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
             </div>
           </details>}
 
-          <span className="nav-label">Workspace</span>
+          <span className="nav-label">{locale === "ru" ? "Рабочая область" : "Workspace"}</span>
           <nav className="app-nav">
             {nav.map((item) => {
               const active = pathname === item.href || (!readOnly && pathname.startsWith(`${item.href}/`));
@@ -170,11 +184,11 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
           <div className="app-sidebar-footer">
             <Link href={publicRoot}>
               <ExternalLink size={15} aria-hidden="true" />
-              <span>View public board</span>
+              <span>{locale === "ru" ? "Открыть доску" : "View public board"}</span>
             </Link>
             <div className="sidebar-profile">
               {viewer?.avatarUrl ? <img className="avatar-small" src={viewer.avatarUrl} alt="" /> : <span className="avatar-small">{initials}</span>}
-              <div><strong>{viewer?.displayName ?? "Seva Dev-a"}</strong><span>{readOnly ? "Demo guide" : role}</span></div>
+              <div><strong>{viewer?.displayName ?? "Seva Dev-a"}</strong><span>{readOnly ? (locale === "ru" ? "Демо-режим" : "Demo guide") : role}</span></div>
               {!readOnly && <form action={signOut}><button className="profile-signout" type="submit" aria-label="Sign out" title="Sign out"><LogOut size={14} /></button></form>}
             </div>
           </div>
@@ -187,10 +201,11 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
               <h1>{current.label}</h1>
             </div>
             <div className="app-header-actions">
-              {readOnly && <span className="demo-badge">Read-only demo</span>}
+              {readOnly && <span className="demo-badge">{locale === "ru" ? "Только чтение · вымышленные данные" : "Read-only demo"}</span>}
+              {readOnly && <LocaleSwitch locale={locale} section={pathname.replace(/^\/ru/, "")} />}
               <button className="header-search" type="button" aria-label="Search workspace" onClick={() => commandRef.current?.showModal()}>
                 <Search size={14} />
-                <span>Search</span>
+                <span>{locale === "ru" ? "Поиск" : "Search"}</span>
                 <kbd>⌘ K</kbd>
               </button>
               {!readOnly && (viewer?.avatarUrl ? <img className="avatar-small" src={viewer.avatarUrl} alt="" /> : <span className="avatar-small">{initials}</span>)}

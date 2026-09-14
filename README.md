@@ -24,7 +24,7 @@ The central workflow is:
 - Interactive Signal Map built with React Flow, plus an accessible linear mobile view.
 - Evidence-backed roadmap and public changelog.
 - Multi-tenant workspaces with owner/editor roles and invite links.
-- GitHub OAuth and email magic-link authentication through Supabase.
+- GitHub OAuth and six-digit email OTP authentication through Supabase.
 - `gte-small` embeddings in a Supabase Edge Function with human confirmation.
 - Read-only `/demo` experience backed by 36 clearly labelled sample requests.
 
@@ -98,6 +98,7 @@ More detail: [architecture](docs/architecture.md).
 | --- | --- |
 | Marketing | `/`, `/login`, `/onboarding` |
 | Live demo | `/demo`, `/demo/app/map`, `/demo/roadmap`, `/demo/changelog` |
+| Русская версия | `/ru`, `/ru/demo`, `/ru/demo/app/map`, `/ru/demo/roadmap`, `/ru/demo/changelog` |
 | Public product | `/feedback/[workspaceSlug]`, post, roadmap and changelog routes |
 | Founder app | `/app/[workspaceSlug]/inbox`, map, roadmap, changelog and settings |
 

@@ -1,16 +1,23 @@
 "use client";
 
 import { motion, useReducedMotion } from "motion/react";
+import type { Locale } from "@/lib/i18n";
 
-const signals = [
+const signalsEn = [
   { label: "Guest roles", x: 8, y: 22, delay: 0.15 },
   { label: "Approval step", x: 19, y: 55, delay: 0.28 },
   { label: "Read-only seats", x: 34, y: 35, delay: 0.4 },
   { label: "Access expires", x: 24, y: 78, delay: 0.52 },
 ];
 
-export function HeroSignalCanvas() {
+export function HeroSignalCanvas({ locale = "en" }: { locale?: Locale }) {
   const reduceMotion = useReducedMotion();
+  const signals = locale === "ru" ? [
+    { label: "Гостевые роли", x: 8, y: 22, delay: 0.15 },
+    { label: "Подтверждение", x: 19, y: 55, delay: 0.28 },
+    { label: "Только чтение", x: 34, y: 35, delay: 0.4 },
+    { label: "Срок доступа", x: 24, y: 78, delay: 0.52 },
+  ] : signalsEn;
 
   return (
     <motion.div
@@ -18,7 +25,7 @@ export function HeroSignalCanvas() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 1, delay: 0.2 }}
-      aria-label="Customer requests connecting to a product theme and roadmap item"
+      aria-label={locale === "ru" ? "Отзывы клиентов связаны с темой и решением roadmap" : "Customer requests connecting to a product theme and roadmap item"}
     >
       <svg className="hero-map-lines" viewBox="0 0 1000 520" preserveAspectRatio="none" aria-hidden="true">
         <path d="M95 112 C310 112 310 250 530 250" />
@@ -49,9 +56,9 @@ export function HeroSignalCanvas() {
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.6, delay: 0.7 }}
       >
-        <span className="node-kicker">THEME · 7 SIGNALS</span>
-        <strong>Team permissions</strong>
-        <span className="node-trend">↑ 14% this month</span>
+        <span className="node-kicker">{locale === "ru" ? "ТЕМА · 7 СИГНАЛОВ" : "THEME · 7 SIGNALS"}</span>
+        <strong>{locale === "ru" ? "Права команды" : "Team permissions"}</strong>
+        <span className="node-trend">{locale === "ru" ? "↑ 14% за месяц" : "↑ 14% this month"}</span>
       </motion.div>
 
       <motion.div
@@ -60,9 +67,9 @@ export function HeroSignalCanvas() {
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.6, delay: 0.95 }}
       >
-        <span className="node-kicker">IN PROGRESS · SEP 2026</span>
-        <strong>Controlled collaboration</strong>
-        <span>Roles, approvals and expiring guest access.</span>
+        <span className="node-kicker">{locale === "ru" ? "В РАБОТЕ · СЕН 2026" : "IN PROGRESS · SEP 2026"}</span>
+        <strong>{locale === "ru" ? "Управляемая совместная работа" : "Controlled collaboration"}</strong>
+        <span>{locale === "ru" ? "Роли, подтверждения и гостевой доступ." : "Roles, approvals and expiring guest access."}</span>
       </motion.div>
     </motion.div>
   );

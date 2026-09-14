@@ -6,8 +6,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { toggleVote } from "@/app/actions";
 import { rememberPendingAction } from "@/lib/pending-actions";
 import type { FeedbackPost } from "@/lib/types";
+import type { Locale } from "@/lib/i18n";
 
-export function VoteButton({ post, readOnly }: { post: FeedbackPost; readOnly: boolean }) {
+export function VoteButton({ post, readOnly, locale = "en" }: { post: FeedbackPost; readOnly: boolean; locale?: Locale }) {
   const router = useRouter();
   const pathname = usePathname();
   const [savedVote, setSavedVote] = useState<{ votes: number; voted: boolean } | null>(null);
@@ -41,7 +42,7 @@ export function VoteButton({ post, readOnly }: { post: FeedbackPost; readOnly: b
         type="button"
         className="vote-button"
         onClick={vote}
-        aria-label={`${voted ? "Remove vote from" : "Vote for"} ${post.title}`}
+        aria-label={`${locale === "ru" ? (voted ? "Убрать голос за" : "Проголосовать за") : (voted ? "Remove vote from" : "Vote for")} ${post.title}`}
         aria-pressed={voted}
         aria-busy={pending}
         disabled={pending}

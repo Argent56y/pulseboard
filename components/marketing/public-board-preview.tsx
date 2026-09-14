@@ -2,18 +2,21 @@ import Link from "next/link";
 import { ArrowUp, Check, MessageSquare } from "lucide-react";
 import { demoFeedback } from "@/lib/mock-data";
 import { feedbackStatusLabel } from "@/lib/utils";
+import { demoFeedbackRu } from "@/lib/mock-data-ru";
+import { localizedPath, marketingCopy, type Locale } from "@/lib/i18n";
 
-export function PublicBoardPreview() {
-  const posts = demoFeedback.slice(0, 4);
+export function PublicBoardPreview({ locale = "en" }: { locale?: Locale }) {
+  const posts = (locale === "ru" ? demoFeedbackRu : demoFeedback).slice(0, 4);
+  const copy = marketingCopy[locale];
   return (
     <section className="board-preview-section section-shell" aria-labelledby="board-preview-title">
-      <div className="section-index">03 / PUBLIC BOARD</div>
+      <div className="section-index">{copy.boardIndex}</div>
       <div className="board-preview-header">
         <div>
-          <p className="eyebrow">Close the loop in public</p>
-          <h2 id="board-preview-title">A feedback board people want to return to.</h2>
+          <p className="eyebrow">{copy.boardEyebrow}</p>
+          <h2 id="board-preview-title">{copy.boardTitle}</h2>
         </div>
-        <Link href="/demo" className="button button-outline">Open Northstar’s board</Link>
+        <Link href={localizedPath(locale, "/demo")} className="button button-outline">{copy.boardButton}</Link>
       </div>
       <div className="board-preview-list">
         {posts.map((post) => (
@@ -26,7 +29,7 @@ export function PublicBoardPreview() {
             <div className="preview-meta">
               <span className={`status status-${post.status}`}>
                 {post.status === "shipped" && <Check size={12} />}
-                {feedbackStatusLabel(post.status)}
+                {feedbackStatusLabel(post.status, locale)}
               </span>
               <span><MessageSquare size={13} /> {post.comments}</span>
             </div>

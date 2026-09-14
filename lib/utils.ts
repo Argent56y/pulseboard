@@ -3,48 +3,19 @@ import type {
   FeedbackStatus,
   RoadmapStatus,
 } from "@/lib/types";
+import { feedbackSourceLabel, localeDate, roadmapLabel, statusLabel, type Locale } from "@/lib/i18n";
 
 export function cn(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
-export function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
-}
+export function formatDate(value: string, locale: Locale = "en") { return localeDate(value, locale); }
 
-export function feedbackStatusLabel(status: FeedbackStatus) {
-  return {
-    new: "New",
-    under_review: "Under review",
-    planned: "Planned",
-    in_progress: "In progress",
-    shipped: "Shipped",
-    closed: "Closed",
-  }[status];
-}
+export function feedbackStatusLabel(status: FeedbackStatus, locale: Locale = "en") { return statusLabel(status, locale); }
 
-export function roadmapStatusLabel(status: RoadmapStatus) {
-  return {
-    planned: "Planned",
-    in_progress: "In progress",
-    shipped: "Shipped",
-  }[status];
-}
+export function roadmapStatusLabel(status: RoadmapStatus, locale: Locale = "en") { return roadmapLabel(status, locale); }
 
-export function sourceLabel(source: FeedbackSource) {
-  return {
-    portal: "Portal",
-    email: "Email",
-    interview: "Interview",
-    support: "Support",
-    manual: "Manual",
-    csv: "CSV import",
-  }[source];
-}
+export function sourceLabel(source: FeedbackSource, locale: Locale = "en") { return feedbackSourceLabel(source, locale); }
 
 export function initials(value: string) {
   return value

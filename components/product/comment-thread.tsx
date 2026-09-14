@@ -6,6 +6,7 @@ import { addComment, type ActionResult } from "@/app/actions";
 import type { FeedbackComment } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 import { rememberPendingAction } from "@/lib/pending-actions";
+import type { Locale } from "@/lib/i18n";
 
 const initialState: ActionResult = { ok: false, message: "" };
 
@@ -13,10 +14,12 @@ export function CommentThread({
   feedbackId,
   comments,
   readOnly,
+  locale = "en",
 }: {
   feedbackId: string;
   comments: FeedbackComment[];
   readOnly: boolean;
+  locale?: Locale;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -39,19 +42,19 @@ export function CommentThread({
 
   return (
     <section className="comment-section" aria-labelledby="comments-heading">
-      <h2 id="comments-heading">Conversation</h2>
+      <h2 id="comments-heading">{locale === "ru" ? "Обсуждение" : "Conversation"}</h2>
       <div className="comment-list">
-        {!comments.length && <div className="comment-empty"><strong>No comments yet.</strong><span>Add context, a use case or a question for the team.</span></div>}
+        {!comments.length && <div className="comment-empty"><strong>{locale === "ru" ? "Комментариев пока нет." : "No comments yet."}</strong><span>{locale === "ru" ? "Добавьте контекст, сценарий использования или вопрос команде." : "Add context, a use case or a question for the team."}</span></div>}
         {comments.map((comment) => (
           <article key={comment.id} className={comment.isStaff ? "comment comment-staff" : "comment"}>
-            <header><strong>{comment.authorName}</strong>{comment.isStaff && <span>TEAM</span>}</header>
+            <header><strong>{comment.authorName}</strong>{comment.isStaff && <span>{locale === "ru" ? "КОМАНДА" : "TEAM"}</span>}</header>
             <p>{comment.body}</p>
-            <time>{formatDate(comment.createdAt)}</time>
+            <time>{formatDate(comment.createdAt, locale)}</time>
           </article>
         ))}
       </div>
       {readOnly ? (
-        <p className="form-hint">This demo conversation is read-only.</p>
+        <p className="form-hint">{locale === "ru" ? "Демо-обсуждение доступно только для чтения." : "This demo conversation is read-only."}</p>
       ) : (
         <form ref={formRef} action={action} className="comment-form form-stack">
           <input type="hidden" name="feedbackId" value={feedbackId} />

@@ -1,42 +1,42 @@
 import { ArrowRight, Quote } from "lucide-react";
 import Link from "next/link";
+import { localizedPath, marketingCopy, type Locale } from "@/lib/i18n";
 
-export function EvidenceSection() {
+export function EvidenceSection({ locale = "en" }: { locale?: Locale }) {
+  const copy = marketingCopy[locale];
   return (
     <section className="evidence-section section-shell" aria-labelledby="evidence-title">
-      <div className="section-index">01 / EVIDENCE</div>
+      <div className="section-index">{copy.evidenceIndex}</div>
       <div className="evidence-heading">
-        <p className="eyebrow">Every decision keeps its evidence</p>
-        <h2 id="evidence-title">Know what to build — and why.</h2>
-        <p>
-          Pulseboard keeps the customer language, emerging theme and roadmap decision in one inspectable path.
-        </p>
+        <p className="eyebrow">{copy.evidenceEyebrow}</p>
+        <h2 id="evidence-title">{copy.evidenceTitle}</h2>
+        <p>{copy.evidenceBody}</p>
       </div>
 
       <div className="evidence-line" aria-label="Evidence path example">
         <article className="evidence-quote">
           <Quote size={20} />
           <blockquote>
-            “We need collaborators who can comment without seeing billing or workspace settings.”
+            “{copy.quote}”
           </blockquote>
-          <footer>Elliot · Email interview</footer>
+          <footer>{copy.quoteBy}</footer>
         </article>
         <ArrowRight className="evidence-arrow" aria-hidden="true" />
         <div className="evidence-theme">
-          <span>THEME · 7 SIGNALS</span>
-          <strong>Team permissions</strong>
-          <small>Confidence 94%</small>
+          <span>{copy.themeMeta}</span>
+          <strong>{copy.theme}</strong>
+          <small>{copy.confidence}</small>
         </div>
         <ArrowRight className="evidence-arrow" aria-hidden="true" />
         <div className="evidence-decision">
-          <span>IN PROGRESS</span>
-          <strong>Controlled collaboration</strong>
-          <small>Target · September</small>
+          <span>{copy.decisionState}</span>
+          <strong>{copy.decision}</strong>
+          <small>{copy.decisionTarget}</small>
         </div>
       </div>
 
-      <Link href="/demo/app/map" className="text-link">
-        Inspect the complete evidence path <ArrowRight size={15} />
+      <Link href={localizedPath(locale, "/demo/app/map")} className="text-link">
+        {copy.inspect} <ArrowRight size={15} />
       </Link>
     </section>
   );

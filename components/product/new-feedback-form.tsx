@@ -7,8 +7,9 @@ import { createFeedback, findPotentialDuplicates } from "@/app/actions";
 import { rememberPendingAction } from "@/lib/pending-actions";
 import type { DuplicateCandidate, Workspace } from "@/lib/types";
 import { feedbackStatusLabel } from "@/lib/utils";
+import type { Locale } from "@/lib/i18n";
 
-export function NewFeedbackForm({ workspace, boardId }: { workspace: Workspace; boardId: string }) {
+export function NewFeedbackForm({ workspace, boardId, locale = "en" }: { workspace: Workspace; boardId: string; locale?: Locale }) {
   const pathname = usePathname();
   const router = useRouter();
   const detailsRef = useRef<HTMLDetailsElement>(null);
@@ -21,7 +22,7 @@ export function NewFeedbackForm({ workspace, boardId }: { workspace: Workspace; 
   const [messageTone, setMessageTone] = useState<"neutral" | "error" | "success">("neutral");
 
   if (workspace.isDemo) {
-    return <Link href="/login?next=/onboarding" className="button button-primary">Suggest an idea</Link>;
+    return <Link href="/login?next=/onboarding" className="button button-primary">{locale === "ru" ? "Предложить идею" : "Suggest an idea"}</Link>;
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {

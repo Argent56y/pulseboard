@@ -4,20 +4,24 @@ import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { motion } from "motion/react";
 import { HeroSignalCanvas } from "@/components/marketing/hero-signal-canvas";
+import { LocaleSwitch } from "@/components/locale-switch";
+import { localizedPath, marketingCopy, type Locale } from "@/lib/i18n";
 
-export function Hero() {
+export function Hero({ locale = "en" }: { locale?: Locale }) {
+  const copy = marketingCopy[locale];
   return (
     <section className="hero" aria-labelledby="hero-title">
       <header className="marketing-nav">
-        <Link href="/" className="wordmark" aria-label="Pulseboard home">
+        <Link href={localizedPath(locale, "/")} className="wordmark" aria-label={locale === "ru" ? "Главная Pulseboard" : "Pulseboard home"}>
           <span className="wordmark-dot" />
           Pulseboard
         </Link>
-        <nav aria-label="Main navigation">
-          <Link href="/demo">Public board</Link>
-          <Link href="/demo/app/map">Live demo</Link>
+        <nav aria-label={locale === "ru" ? "Основная навигация" : "Main navigation"}>
+          <Link href={localizedPath(locale, "/demo")}>{copy.navBoard}</Link>
+          <Link href={localizedPath(locale, "/demo/app/map")}>{copy.navDemo}</Link>
+          <LocaleSwitch locale={locale} section="/" />
           <Link href="/login" className="nav-action">
-            Sign in <ArrowUpRight size={14} />
+            {copy.navSignIn} <ArrowUpRight size={14} />
           </Link>
         </nav>
       </header>
@@ -28,26 +32,24 @@ export function Hero() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
       >
-        <p className="eyebrow">Feedback intelligence for small product teams</p>
+        <p className="eyebrow">{copy.eyebrow}</p>
         <h1 id="hero-title">Pulseboard.</h1>
         <p className="hero-promise">
-          Turn scattered customer requests into a roadmap you can explain.
+          {copy.promise}
         </p>
         <div className="hero-actions">
-          <Link href="/demo/app/map" className="button button-primary">
-            Explore the live demo <ArrowUpRight size={16} />
+          <Link href={localizedPath(locale, "/demo/app/map")} className="button button-primary">
+            {copy.primary} <ArrowUpRight size={16} />
           </Link>
-          <Link href="/login" className="button button-quiet">
-            Create a workspace
+          <Link href={locale === "ru" ? "/ru/demo" : "/login"} className="button button-quiet">
+            {copy.secondary}
           </Link>
         </div>
       </motion.div>
 
-      <HeroSignalCanvas />
+      <HeroSignalCanvas locale={locale} />
       <div className="hero-caption" aria-hidden="true">
-        <span>RAW SIGNALS</span>
-        <span>THEME 04</span>
-        <span>ROADMAP / Q4</span>
+        {copy.captions.map((caption) => <span key={caption}>{caption}</span>)}
       </div>
     </section>
   );

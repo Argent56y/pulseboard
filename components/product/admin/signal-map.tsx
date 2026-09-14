@@ -19,6 +19,7 @@ import { Check, RotateCcw, Sparkles, X } from "lucide-react";
 import { reviewSuggestion } from "@/app/actions";
 import type { FeedbackPost, FeedbackSource, FeedbackStatus, GraphData, RoadmapItem, Theme } from "@/lib/types";
 import { feedbackStatusLabel, sourceLabel } from "@/lib/utils";
+import type { Locale } from "@/lib/i18n";
 
 type SignalNodeKind = "feedback" | "theme" | "roadmap";
 type SignalNodeData = {
@@ -28,6 +29,7 @@ type SignalNodeData = {
   accent?: string;
   selected: boolean;
   rings?: number;
+  caption?: string;
 };
 type SignalNode = Node<SignalNodeData>;
 
@@ -43,7 +45,7 @@ function ThemeNode({ data }: NodeProps<SignalNode>) {
   return <div className={`signal-node signal-node-theme ${data.selected ? "signal-node-selected" : ""}`}>
     <span className="evidence-rings" aria-hidden="true">{Array.from({ length: data.rings ?? 1 }, (_, index) => <i key={index} />)}</span>
     <Handle className="node-handle" type="target" position={Position.Left} />
-    <strong>{data.title}</strong><span>{data.meta}</span><em>signal cluster</em>
+    <strong>{data.title}</strong><span>{data.meta}</span><em>{data.caption ?? "signal cluster"}</em>
     <Handle className="node-handle" type="source" position={Position.Right} />
   </div>;
 }
@@ -72,9 +74,10 @@ interface SignalMapProps {
   graph: GraphData;
   readOnly?: boolean;
   initialSelected?: string;
+  locale?: Locale;
 }
 
-export function SignalMap({ graph, readOnly = false, initialSelected }: SignalMapProps) {
+export function SignalMap({ graph, readOnly = false, initialSelected, locale = "en" }: SignalMapProps) {
   const [selectedId, setSelectedId] = useState(initialSelected ?? graph.roadmap[0]?.id ?? graph.themes[0]?.id ?? graph.feedback[0]?.id ?? "");
   const [source, setSource] = useState<FeedbackSource | "all">("all");
   const [status, setStatus] = useState<FeedbackStatus | "all">("all");
@@ -133,7 +136,7 @@ export function SignalMap({ graph, readOnly = false, initialSelected }: SignalMa
     const nextEdges: Edge[] = [];
     graph.themes.forEach((theme, themeIndex) => {
       const baseY = 34 + themeIndex * 120;
-      nextNodes.push({ id: theme.id, type: "theme", position: { x: 350, y: baseY }, data: { kind: "theme", title: theme.name, meta: `${theme.signalCount} signals · ${theme.velocity >= 0 ? "+" : ""}${theme.velocity}%`, selected: theme.id === selectedId, rings: Math.max(1, Math.min(4, Math.ceil(theme.signalCount / 3))) } });
+      nextNodes.push({ id: theme.id, type: "theme", position: { x: 350, y: baseY }, data: { kind: "theme", title: theme.name, meta: `${theme.signalCount} ${locale === "ru" ? "сигналов" : "signals"} · ${theme.velocity >= 0 ? "+" : ""}${theme.velocity}%`, caption: locale === "ru" ? "кластер сигналов" : "signal cluster", selected: theme.id === selectedId, rings: Math.max(1, Math.min(4, Math.ceil(theme.signalCount / 3))) } });
     });
 
     const themeSlots = new Map<string, number>();
@@ -155,7 +158,7 @@ export function SignalMap({ graph, readOnly = false, initialSelected }: SignalMa
         data: {
           kind: "feedback",
           title: post.title,
-          meta: postLinks.length ? `${sourceLabel(post.source)} · ${post.votes} votes` : `Awaiting theme · ${sourceLabel(post.source)}`,
+          meta: postLinks.length ? `${sourceLabel(post.source, locale)} · ${post.votes} ${locale === "ru" ? "голосов" : "votes"}` : `${locale === "ru" ? "Ожидает тему" : "Awaiting theme"} · ${sourceLabel(post.source, locale)}`,
           selected: post.id === selectedId,
         },
       });
@@ -174,7 +177,7 @@ export function SignalMap({ graph, readOnly = false, initialSelected }: SignalMa
         }));
     });
     graph.roadmap.forEach((item, index) => {
-      nextNodes.push({ id: item.id, type: "roadmap", position: { x: 690, y: 74 + index * 174 }, data: { kind: "roadmap", title: item.title, meta: `${item.status.replace("_", " ")} · ${item.feedbackCount} signals`, accent: roadmapColors[item.status], selected: item.id === selectedId } });
+      nextNodes.push({ id: item.id, type: "roadmap", position: { x: 690, y: 74 + index * 174 }, data: { kind: "roadmap", title: item.title, meta: `${feedbackStatusLabel(item.status, locale)} · ${item.feedbackCount} ${locale === "ru" ? "сигналов" : "signals"}`, accent: roadmapColors[item.status], selected: item.id === selectedId } });
       item.themeIds.forEach((themeId) => nextEdges.push({
         id: `roadmap-${item.id}-${themeId}`,
         source: themeId,
@@ -186,7 +189,7 @@ export function SignalMap({ graph, readOnly = false, initialSelected }: SignalMa
       }));
     });
     return { nodes: nextNodes, edges: nextEdges };
-  }, [graph, linkedIds, links, selectedId, visibleFeedback]);
+  }, [graph, linkedIds, links, locale, selectedId, visibleFeedback]);
 
   const selected = graph.feedback.find((item) => item.id === selectedId)
     ?? graph.themes.find((item) => item.id === selectedId)
@@ -194,7 +197,7 @@ export function SignalMap({ graph, readOnly = false, initialSelected }: SignalMa
 
   function review(linkId: string, state: "confirmed" | "rejected") {
     if (readOnly) {
-      setNotice("This is sample data. Create a workspace to review suggestions.");
+      setNotice(locale === "ru" ? "Это вымышленные данные. Создайте workspace, чтобы работать со своими отзывами." : "This is sample data. Create a workspace to review suggestions.");
       return;
     }
     startTransition(async () => {
@@ -207,15 +210,15 @@ export function SignalMap({ graph, readOnly = false, initialSelected }: SignalMa
   return (
     <>
       <div className="map-toolbar">
-        <div className="map-toolbar-copy"><strong>Evidence network</strong><span>{visibleFeedback.length} visible messages · {graph.themes.length} themes · {graph.roadmap.length} decisions</span></div>
+        <div className="map-toolbar-copy"><strong>{locale === "ru" ? "Signal Map · карта связей" : "Evidence network"}</strong><span>{locale === "ru" ? `${visibleFeedback.length} отзывов · ${graph.themes.length} тем · ${graph.roadmap.length} решений · вымышленные данные` : `${visibleFeedback.length} visible messages · ${graph.themes.length} themes · ${graph.roadmap.length} decisions`}</span></div>
         <div className="filter-row">
           <select className="filter-select" value={source} onChange={(event) => setSource(event.target.value as FeedbackSource | "all")} aria-label="Filter map by source">
-            <option value="all">Every source</option>
-            {(["portal", "email", "interview", "support"] as FeedbackSource[]).map((value) => <option key={value} value={value}>{sourceLabel(value)}</option>)}
+            <option value="all">{locale === "ru" ? "Все источники" : "Every source"}</option>
+            {(["portal", "email", "interview", "support"] as FeedbackSource[]).map((value) => <option key={value} value={value}>{sourceLabel(value, locale)}</option>)}
           </select>
           <select className="filter-select" value={status} onChange={(event) => setStatus(event.target.value as FeedbackStatus | "all")} aria-label="Filter map by status">
-            <option value="all">Every status</option>
-            {(["new", "under_review", "planned", "in_progress", "shipped"] as FeedbackStatus[]).map((value) => <option key={value} value={value}>{feedbackStatusLabel(value)}</option>)}
+            <option value="all">{locale === "ru" ? "Все статусы" : "Every status"}</option>
+            {(["new", "under_review", "planned", "in_progress", "shipped"] as FeedbackStatus[]).map((value) => <option key={value} value={value}>{feedbackStatusLabel(value, locale)}</option>)}
           </select>
           {(source !== "all" || status !== "all") && <button className="icon-button" type="button" onClick={() => { setSource("all"); setStatus("all"); }} aria-label="Reset filters"><RotateCcw size={13} /></button>}
         </div>
@@ -244,40 +247,41 @@ export function SignalMap({ graph, readOnly = false, initialSelected }: SignalMa
           </ReactFlow>
         </div>
         <aside className="map-inspector" aria-label="Selected evidence details">
-          {selected ? <Inspector key={selectedId} selected={selected} graph={{ ...graph, links }} onReview={review} pending={isPending} /> : <div className="inspector-empty">Select a signal, theme or roadmap item to inspect its evidence path.</div>}
+          {selected ? <Inspector key={selectedId} selected={selected} graph={{ ...graph, links }} onReview={review} pending={isPending} locale={locale} /> : <div className="inspector-empty">{locale === "ru" ? "Выберите отзыв, тему или пункт roadmap, чтобы изучить цепочку доказательств." : "Select a signal, theme or roadmap item to inspect its evidence path."}</div>}
         </aside>
       </div>
 
       <div className="mobile-signal-list" aria-label="Accessible evidence paths">
-        {unlinkedFeedback.map((post) => <article className="mobile-signal-path" key={`unlinked-${post.id}`}><span>feedback → awaiting theme</span><h3>{post.title}</h3><p>{post.body}</p></article>)}
+        {unlinkedFeedback.map((post) => <article className="mobile-signal-path" key={`unlinked-${post.id}`}><span>{locale === "ru" ? "отзыв → ожидает тему" : "feedback → awaiting theme"}</span><h3>{post.title}</h3><p>{post.body}</p></article>)}
         {graph.roadmap.map((roadmap) => roadmap.themeIds.map((themeId) => {
           const theme = graph.themes.find((item) => item.id === themeId);
           const posts = links.filter((link) => link.themeId === themeId && link.state !== "rejected").map((link) => graph.feedback.find((post) => post.id === link.feedbackId)).filter(Boolean) as FeedbackPost[];
-          return <article className="mobile-signal-path" key={`${roadmap.id}-${themeId}`}><span>feedback → theme → roadmap</span><h3>{roadmap.title}</h3><p>{posts.length} customer messages support “{theme?.name}”. {roadmap.summary}</p></article>;
+          return <article className="mobile-signal-path" key={`${roadmap.id}-${themeId}`}><span>{locale === "ru" ? "отзыв → тема → roadmap" : "feedback → theme → roadmap"}</span><h3>{roadmap.title}</h3><p>{locale === "ru" ? `${posts.length} отзывов подтверждают тему «${theme?.name}». ${roadmap.summary}` : `${posts.length} customer messages support “${theme?.name}”. ${roadmap.summary}`}</p></article>;
         }))}
       </div>
     </>
   );
 }
 
-function Inspector({ selected, graph, onReview, pending }: {
+function Inspector({ selected, graph, onReview, pending, locale }: {
   selected: FeedbackPost | Theme | RoadmapItem;
   graph: GraphData;
   onReview: (linkId: string, state: "confirmed" | "rejected") => void;
   pending: boolean;
+  locale: Locale;
 }) {
   if ("votes" in selected) {
     const links = graph.links.filter((link) => link.feedbackId === selected.id && link.state !== "rejected");
-    return <div className="inspector-content"><p className="inspector-label">Customer signal</p><h2>{selected.title}</h2><p>{selected.body}</p><div className="inspector-meta"><div><span>Source</span><strong>{sourceLabel(selected.source)}</strong></div><div><span>Reach</span><strong>{selected.votes} votes</strong></div></div><ul className="evidence-list">{links.map((link) => {
+    return <div className="inspector-content"><p className="inspector-label">{locale === "ru" ? "Отзыв клиента" : "Customer signal"}</p><h2>{selected.title}</h2><p>{selected.body}</p><div className="inspector-meta"><div><span>{locale === "ru" ? "Источник" : "Source"}</span><strong>{sourceLabel(selected.source, locale)}</strong></div><div><span>{locale === "ru" ? "Охват" : "Reach"}</span><strong>{selected.votes} {locale === "ru" ? "голосов" : "votes"}</strong></div></div><ul className="evidence-list">{links.map((link) => {
       const theme = graph.themes.find((item) => item.id === link.themeId);
-      return <li key={link.id}><strong>{theme?.name}</strong>{Math.round(link.similarity * 100)}% semantic match · {link.state}{link.state === "suggested" && <div className="inspector-actions"><button disabled={pending} className="button button-small button-primary" type="button" onClick={() => onReview(link.id, "confirmed")}><Check size={13} /> Confirm</button><button disabled={pending} className="button button-small button-outline" type="button" onClick={() => onReview(link.id, "rejected")}><X size={13} /> Reject</button></div>}</li>;
+      return <li key={link.id}><strong>{theme?.name}</strong>{Math.round(link.similarity * 100)}% {locale === "ru" ? "семантическое совпадение" : "semantic match"} · {link.state === "suggested" ? (locale === "ru" ? "предложено AI" : "suggested") : (locale === "ru" ? "подтверждено" : "confirmed")}{link.state === "suggested" && <div className="inspector-actions"><button disabled={pending} className="button button-small button-primary" type="button" onClick={() => onReview(link.id, "confirmed")}><Check size={13} /> {locale === "ru" ? "Подтвердить" : "Confirm"}</button><button disabled={pending} className="button button-small button-outline" type="button" onClick={() => onReview(link.id, "rejected")}><X size={13} /> {locale === "ru" ? "Отклонить" : "Reject"}</button></div>}</li>;
     })}</ul></div>;
   }
   if ("signalCount" in selected) {
     const evidence = graph.links.filter((link) => link.themeId === selected.id && link.state !== "rejected").map((link) => ({ link, post: graph.feedback.find((post) => post.id === link.feedbackId) })).filter((item) => item.post);
-    return <div className="inspector-content"><p className="inspector-label">Theme</p><h2>{selected.name}</h2><p>{selected.description}</p><div className="inspector-meta"><div><span>Signals</span><strong>{selected.signalCount}</strong></div><div><span>30-day velocity</span><strong>{selected.velocity >= 0 ? "+" : ""}{selected.velocity}%</strong></div></div><h3 className="inspector-subhead">Source language</h3><ul className="evidence-list">{evidence.slice(0, 6).map(({ link, post }) => <li key={link.id}><strong>“{post!.title}”</strong>{post!.authorName} · {link.state === "suggested" ? <><Sparkles size={10} /> AI suggestion</> : "Founder confirmed"}</li>)}</ul></div>;
+    return <div className="inspector-content"><p className="inspector-label">{locale === "ru" ? "Тема" : "Theme"}</p><h2>{selected.name}</h2><p>{selected.description}</p><div className="inspector-meta"><div><span>{locale === "ru" ? "Сигналы" : "Signals"}</span><strong>{selected.signalCount}</strong></div><div><span>{locale === "ru" ? "Динамика за 30 дней" : "30-day velocity"}</span><strong>{selected.velocity >= 0 ? "+" : ""}{selected.velocity}%</strong></div></div><h3 className="inspector-subhead">{locale === "ru" ? "Фразы клиентов" : "Source language"}</h3><ul className="evidence-list">{evidence.slice(0, 6).map(({ link, post }) => <li key={link.id}><strong>“{post!.title}”</strong>{post!.authorName} · {link.state === "suggested" ? <><Sparkles size={10} /> {locale === "ru" ? "Предложение AI" : "AI suggestion"}</> : (locale === "ru" ? "Подтверждено founder-ом" : "Founder confirmed")}</li>)}</ul></div>;
   }
   const themes = graph.themes.filter((theme) => selected.themeIds.includes(theme.id));
   const evidence = graph.links.filter((link) => selected.themeIds.includes(link.themeId) && link.state !== "rejected");
-  return <div className="inspector-content"><p className="inspector-label">Roadmap decision</p><h2>{selected.title}</h2><p>{selected.summary}</p><div className="inspector-meta"><div><span>Status</span><strong>{selected.status.replace("_", " ")}</strong></div><div><span>Evidence</span><strong>{evidence.length} messages</strong></div></div><h3 className="inspector-subhead">Why this is prioritized</h3><ul className="evidence-list">{themes.map((theme) => <li key={theme.id}><strong>{theme.name}</strong>{theme.signalCount} signals · {theme.velocity >= 0 ? "+" : ""}{theme.velocity}% velocity</li>)}</ul></div>;
+  return <div className="inspector-content"><p className="inspector-label">{locale === "ru" ? "Решение roadmap" : "Roadmap decision"}</p><h2>{selected.title}</h2><p>{selected.summary}</p><div className="inspector-meta"><div><span>{locale === "ru" ? "Статус" : "Status"}</span><strong>{feedbackStatusLabel(selected.status, locale)}</strong></div><div><span>{locale === "ru" ? "Доказательства" : "Evidence"}</span><strong>{evidence.length} {locale === "ru" ? "отзывов" : "messages"}</strong></div></div><h3 className="inspector-subhead">{locale === "ru" ? "Почему это приоритет" : "Why this is prioritized"}</h3><ul className="evidence-list">{themes.map((theme) => <li key={theme.id}><strong>{theme.name}</strong>{theme.signalCount} {locale === "ru" ? "сигналов" : "signals"} · {theme.velocity >= 0 ? "+" : ""}{theme.velocity}% {locale === "ru" ? "динамика" : "velocity"}</li>)}</ul></div>;
 }

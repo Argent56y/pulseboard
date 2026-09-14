@@ -181,6 +181,24 @@ a {
   color: var(--foreground);
 }
 
+.locale-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--decorative);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: .06em;
+}
+
+.locale-switch a { padding: 0; border: 0; color: var(--secondary); }
+.locale-switch a[aria-current="page"] { color: var(--foreground); }
+.locale-switch a:hover { color: var(--foreground); }
+
 .hero-copy {
   position: relative;
   z-index: 10;
@@ -396,6 +414,7 @@ a {
   border-left: 3px solid var(--accent);
   border-radius: var(--radius-md);
   background: var(--surface-elevated);
+  overflow-wrap: anywhere;
 }
 
 .hero-roadmap > span:last-child {
@@ -776,6 +795,8 @@ a {
   backdrop-filter: blur(14px);
 }
 
+.product-header-actions { display: flex; align-items: center; gap: 10px; }
+
 .product-brand {
   display: flex;
   align-items: center;
@@ -855,7 +876,22 @@ a {
   line-height: 0.94;
   letter-spacing: -0.065em;
   font-weight: 590;
+  overflow-wrap: anywhere;
 }
+
+.locale-ru .hero-promise,
+.locale-ru .evidence-heading h2,
+.locale-ru .workflow-intro h2,
+.locale-ru .board-preview-header h2,
+.locale-ru .final-cta h2 {
+  letter-spacing: -0.045em;
+  overflow-wrap: anywhere;
+}
+
+.locale-ru .hero-promise { max-width: 760px; }
+
+.locale-ru .hero-roadmap { width: 290px; }
+.locale-ru .hero-theme { width: 224px; }
 
 .public-heading p {
   max-width: 580px;
@@ -1875,6 +1911,14 @@ a {
 
 .app-table tr:hover td { background: rgba(175, 193, 199, 0.025); }
 .app-table td:first-child { color: var(--foreground); }
+.ru-inbox-table { table-layout: fixed; }
+.ru-inbox-table th:first-child,
+.ru-inbox-table td:first-child { width: 52%; }
+.ru-inbox-table th:nth-child(2), .ru-inbox-table td:nth-child(2) { width: 14%; }
+.ru-inbox-table th:nth-child(3), .ru-inbox-table td:nth-child(3) { width: 10%; }
+.ru-inbox-table th:nth-child(4), .ru-inbox-table td:nth-child(4) { width: 12%; }
+.ru-inbox-table th:nth-child(5), .ru-inbox-table td:nth-child(5) { width: 12%; }
+.ru-inbox-table .status { white-space: nowrap; }
 .table-title { display: block; color: var(--foreground); font-size: 13px; font-weight: 540; }
 .table-subtitle { display: block; max-width: 460px; margin-top: 4px; color: var(--decorative); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -2170,6 +2214,7 @@ a {
   }
   .hero-theme { left: 43%; width: 184px; height: 116px; padding: 16px; }
   .hero-roadmap { right: 0; width: 220px; padding: 18px; }
+  .locale-ru .hero-roadmap { width: 260px; }
   .evidence-line { grid-template-columns: 1fr; }
   .evidence-arrow { transform: rotate(90deg); justify-self: center; }
   .evidence-theme { width: 220px; justify-self: center; }
@@ -2196,6 +2241,7 @@ a {
   .marketing-nav { padding: 0 18px; }
   .marketing-nav nav a:not(.nav-action) { display: none; }
   .marketing-nav nav { gap: 0; }
+  .marketing-nav .locale-switch { margin-right: 10px; }
   .hero { min-height: 900px; }
   .hero-copy { width: calc(100% - 36px); padding: 74px 0 0 18px; }
   .hero h1 { max-width: 100%; font-size: clamp(50px, 17vw, 88px); line-height: .84; letter-spacing: -.065em; }
@@ -2241,6 +2287,8 @@ a {
     width: 164px;
     padding: 14px;
   }
+  .locale-ru .hero-roadmap { width: 178px; padding: 12px; }
+  .locale-ru .hero-theme { width: 126px; }
   .hero-theme strong,
   .hero-roadmap strong { font-size: 12px; line-height: 1.18; }
   .hero-theme .node-kicker,
@@ -2263,6 +2311,8 @@ a {
   .preview-meta { grid-column: 2; justify-content: space-between; }
   .site-footer { grid-template-columns: 1fr; gap: 12px; }
   .product-topbar { min-height: 0; align-items: flex-start; flex-wrap: wrap; padding: 16px 18px 0; }
+  .product-header-actions { margin-left: auto; }
+  .product-header-actions .demo-badge { display: none; }
   .product-tabs { order: 3; width: 100%; overflow-x: auto; gap: 22px; }
   .product-tabs a { white-space: nowrap; padding: 14px 0 12px; }
   .public-shell { padding-top: 46px; }
@@ -2300,6 +2350,8 @@ a {
   .inbox-layout .section-toolbar { flex-direction: column; }
   .toolbar-actions { width: 100%; justify-content: space-between; }
   .table-toolbar { min-width: 680px; }
+  .inbox-layout .table-toolbar { width: 100%; min-width: 0; }
+  .inbox-layout .ru-inbox-table { min-width: 680px; }
   .map-workspace { display: block; height: auto; }
   .map-canvas { display: none; }
   .map-inspector { display: none; }
