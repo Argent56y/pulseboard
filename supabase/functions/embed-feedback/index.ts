@@ -102,6 +102,12 @@ Deno.serve(async (request) => {
         const embedding = await model.run(`${feedback.title}\n\n${feedback.body}`, { mean_pool: true, normalize: true });
         const updated = await admin.from("feedback_posts").update({ embedding, embedding_state: "ready", embedding_error: null }).eq("id", feedback.id);
         if (updated.error) throw updated.error;
+        const [clearedThemes, clearedDuplicates] = await Promise.all([
+          admin.from("feedback_theme_links").delete().eq("feedback_id", feedback.id).eq("state", "suggested"),
+          admin.from("feedback_duplicate_links").delete().eq("feedback_id", feedback.id).eq("state", "suggested"),
+        ]);
+        if (clearedThemes.error) throw clearedThemes.error;
+        if (clearedDuplicates.error) throw clearedDuplicates.error;
         const [themes, duplicates] = await Promise.all([
           admin.rpc("find_theme_suggestions", { p_feedback_id: feedback.id, p_threshold: 0.78, p_count: 5 }),
           admin.rpc("find_duplicate_suggestions", { p_feedback_id: feedback.id, p_threshold: 0.86, p_count: 3 }),

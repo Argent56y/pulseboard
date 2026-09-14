@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import type { ImportFeedbackRow } from "@/lib/csv-import";
 import { canTransitionFeedbackStatus } from "@/lib/domain";
 import { getSiteUrl } from "@/lib/site-url";
 import type { DuplicateCandidate, FeedbackStatus } from "@/lib/types";
@@ -11,7 +12,9 @@ import {
   commentSchema,
   changelogSchema,
   feedbackSchema,
-  importRowSchema,
+  feedbackImportBatchSchema,
+  feedbackImportFinishSchema,
+  feedbackImportSchema,
   roadmapItemSchema,
   roadmapStatusSchema,
   statusSchema,
@@ -20,7 +23,7 @@ import {
   workspaceSettingsSchema,
   workspaceSchema,
 } from "@/lib/validations";
-import type { FeedbackSource, RoadmapStatus, WorkspaceRole } from "@/lib/types";
+import type { RoadmapStatus, WorkspaceRole } from "@/lib/types";
 
 export interface ActionResult<T = string> {
   ok: boolean;
@@ -165,13 +168,19 @@ export async function findPotentialDuplicates(input: {
 }
 
 export async function retryFeedbackAnalysis(feedbackId: string): Promise<ActionResult> {
+  if (!/^[0-9a-f-]{36}$/i.test(feedbackId)) return { ok: false, message: "Invalid feedback id." };
   const auth = await authenticatedClient();
   if (!auth) return unavailable;
-  const { error: resetError } = await auth.supabase.from("feedback_posts").update({ embedding_state: "pending", embedding_error: null }).eq("id", feedbackId);
-  if (resetError) return { ok: false, message: resetError.message };
-  const { error } = await auth.supabase.functions.invoke("embed-feedback", { body: { feedbackId } });
+  const { data: feedback } = await auth.supabase.from("feedback_posts").select("workspace_id,title").eq("id", feedbackId).maybeSingle();
+  if (!feedback) return { ok: false, message: "Feedback not found." };
+  const workspaceAuth = await authorizedWorkspace(feedback.workspace_id);
+  if (!workspaceAuth) return { ok: false, message: "Editor access is required." };
+  // Updating an embedding input column reuses the database trigger that clears
+  // stale analysis and queues a retry. The worker remains the only processor.
+  const { error } = await workspaceAuth.supabase.from("feedback_posts").update({ title: feedback.title }).eq("id", feedbackId).eq("workspace_id", feedback.workspace_id);
+  if (error) return { ok: false, message: "Analysis could not be queued. Please try again." };
   revalidatePath("/app", "layout");
-  return error ? { ok: false, message: "Analysis could not be restarted." } : { ok: true, message: "Analysis restarted." };
+  return { ok: true, message: "Analysis queued. Suggestions will appear automatically." };
 }
 
 export async function toggleVote(
@@ -293,7 +302,12 @@ export async function reviewSuggestion(input: {
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0].message };
   const auth = await authenticatedClient();
   if (!auth) return unavailable;
-
+  const { data: link } = await auth.supabase
+    .from("feedback_theme_links")
+    .select("workspace_id")
+    .eq("id", parsed.data.linkId)
+    .maybeSingle();
+  if (!link || !await authorizedWorkspace(link.workspace_id)) return { ok: false, message: "Editor access is required." };
   const { error } = await auth.supabase
     .from("feedback_theme_links")
     .update({ state: parsed.data.state, reviewed_by: auth.userId, reviewed_at: new Date().toISOString() })
@@ -669,57 +683,69 @@ export async function deleteWorkspace(workspaceId: string, confirmationSlug: str
   redirect("/app");
 }
 
-export interface ImportFeedbackRow {
-  title: string;
-  body: string;
-  authorName?: string;
-  source?: FeedbackSource;
-  status?: FeedbackStatus;
-  createdAt?: string;
-  externalId?: string;
-  rowIndex: number;
-}
-
 export async function createFeedbackImport(input: { workspaceId: string; filename: string; totalRows: number }): Promise<ActionResult<string>> {
-  const auth = await authorizedWorkspace(input.workspaceId);
+  const parsed = feedbackImportSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0].message };
+  const auth = await authorizedWorkspace(parsed.data.workspaceId);
   if (!auth) return { ok: false, message: "Editor access is required." };
-  if (!input.filename || input.filename.length > 255 || input.totalRows < 1 || input.totalRows > 1000) return { ok: false, message: "CSV must contain between 1 and 1000 rows." };
-  const { data, error } = await auth.supabase.from("feedback_imports").insert({ workspace_id: input.workspaceId, filename: input.filename, total_rows: input.totalRows, state: "processing", created_by: auth.userId }).select("id").single();
+  const { data, error } = await auth.supabase.from("feedback_imports").insert({ workspace_id: parsed.data.workspaceId, filename: parsed.data.filename, total_rows: parsed.data.totalRows, state: "processing", created_by: auth.userId }).select("id").single();
   if (error || !data) return { ok: false, message: error?.message ?? "Could not start the import." };
   return { ok: true, message: "Import started.", value: data.id };
 }
 
 export async function importFeedbackBatch(input: { importId: string; workspaceId: string; boardId: string; rows: ImportFeedbackRow[] }): Promise<ActionResult<number>> {
-  const auth = await authorizedWorkspace(input.workspaceId);
+  const parsed = feedbackImportBatchSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: `Batch validation failed: ${parsed.error.issues[0].message}` };
+  const auth = await authorizedWorkspace(parsed.data.workspaceId);
   if (!auth) return { ok: false, message: "Editor access is required." };
-  if (input.rows.length < 1 || input.rows.length > 200) return { ok: false, message: "Each import batch must contain 1–200 rows." };
-  const parsedRows = input.rows.map((row) => importRowSchema.safeParse(row));
-  const valid = parsedRows.flatMap((result) => result.success ? [result.data] : []);
-  const failed = parsedRows.length - valid.length;
-  const payload = valid.map((row) => ({
-    workspace_id: input.workspaceId,
-    board_id: input.boardId,
+  const [{ data: importSession }, { data: board }] = await Promise.all([
+    auth.supabase.from("feedback_imports").select("id,created_by,state").eq("id", parsed.data.importId).eq("workspace_id", parsed.data.workspaceId).maybeSingle(),
+    auth.supabase.from("boards").select("id").eq("id", parsed.data.boardId).eq("workspace_id", parsed.data.workspaceId).maybeSingle(),
+  ]);
+  if (!importSession || (importSession.created_by !== auth.userId && auth.role !== "owner")) return { ok: false, message: "This import session is not available." };
+  if (!board) return { ok: false, message: "The destination board is not available." };
+  await auth.supabase.from("feedback_imports").update({ state: "processing", error_message: null }).eq("id", parsed.data.importId);
+  const now = new Date().toISOString();
+  const payload = parsed.data.rows.map((row) => ({
+    workspace_id: parsed.data.workspaceId,
+    board_id: parsed.data.boardId,
     author_id: null,
     author_name_snapshot: row.authorName || "Imported customer",
     title: row.title,
     body: row.body,
     source: row.source,
     status: row.status,
-    created_at: row.createdAt,
-    import_id: input.importId,
+    created_at: row.createdAt ?? now,
+    import_id: parsed.data.importId,
     import_row_index: row.rowIndex,
     external_id: row.externalId || null,
   }));
-  const { data, error } = payload.length ? await auth.supabase.from("feedback_posts").upsert(payload, { onConflict: "import_id,import_row_index", ignoreDuplicates: true }).select("id") : { data: [], error: null };
-  if (error) return { ok: false, message: error.message, value: 0 };
-  const imported = data?.length ?? 0;
-  const { data: current } = await auth.supabase.from("feedback_imports").select("imported_rows,failed_rows,total_rows").eq("id", input.importId).eq("workspace_id", input.workspaceId).maybeSingle();
-  if (current) {
-    const importedRows = current.imported_rows + imported;
-    const failedRows = current.failed_rows + failed;
-    const complete = importedRows + failedRows >= current.total_rows;
-    await auth.supabase.from("feedback_imports").update({ imported_rows: importedRows, failed_rows: failedRows, state: complete ? (failedRows ? "completed_with_errors" : "completed") : "processing", completed_at: complete ? new Date().toISOString() : null }).eq("id", input.importId);
+  const { error } = await auth.supabase.from("feedback_posts").upsert(payload, { onConflict: "import_id,import_row_index", ignoreDuplicates: true });
+  if (error) {
+    const { count: existingCount } = await auth.supabase.from("feedback_posts").select("id", { count: "exact", head: true }).eq("import_id", parsed.data.importId).eq("workspace_id", parsed.data.workspaceId);
+    await auth.supabase.from("feedback_imports").update({ state: "failed", error_message: error.message.slice(0, 500) }).eq("id", parsed.data.importId);
+    return { ok: false, message: error.code === "23505" ? "A row reuses an external_id that already exists in this workspace." : "This batch could not be imported. You can retry safely.", value: existingCount ?? 0 };
   }
+  const { count } = await auth.supabase.from("feedback_posts").select("id", { count: "exact", head: true }).eq("import_id", parsed.data.importId).eq("workspace_id", parsed.data.workspaceId);
+  const imported = count ?? 0;
+  const { error: progressError } = await auth.supabase.from("feedback_imports").update({ imported_rows: imported }).eq("id", parsed.data.importId).eq("workspace_id", parsed.data.workspaceId);
+  if (progressError) return { ok: false, message: "Rows were imported, but progress could not be updated. Retry safely.", value: imported };
   revalidatePath("/app", "layout");
-  return { ok: true, message: `${imported} rows imported${failed ? `, ${failed} rejected` : ""}.`, value: imported };
+  return { ok: true, message: `${imported} rows imported so far.`, value: imported };
+}
+
+export async function finishFeedbackImport(input: { importId: string; workspaceId: string }): Promise<ActionResult<{ imported: number; failed: number }>> {
+  const parsed = feedbackImportFinishSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0].message };
+  const auth = await authorizedWorkspace(parsed.data.workspaceId);
+  if (!auth) return { ok: false, message: "Editor access is required." };
+  const { data: importSession } = await auth.supabase.from("feedback_imports").select("id,created_by,total_rows").eq("id", parsed.data.importId).eq("workspace_id", parsed.data.workspaceId).maybeSingle();
+  if (!importSession || (importSession.created_by !== auth.userId && auth.role !== "owner")) return { ok: false, message: "This import session is not available." };
+  const { count } = await auth.supabase.from("feedback_posts").select("id", { count: "exact", head: true }).eq("import_id", parsed.data.importId).eq("workspace_id", parsed.data.workspaceId);
+  const imported = Math.min(count ?? 0, importSession.total_rows);
+  const failed = Math.max(0, importSession.total_rows - imported);
+  const { error } = await auth.supabase.from("feedback_imports").update({ imported_rows: imported, failed_rows: failed, state: failed ? "completed_with_errors" : "completed", completed_at: new Date().toISOString(), error_message: null }).eq("id", parsed.data.importId).eq("workspace_id", parsed.data.workspaceId);
+  if (error) return { ok: false, message: "The import finished, but its summary could not be saved." };
+  revalidatePath("/app", "layout");
+  return { ok: true, message: "Import complete.", value: { imported, failed } };
 }

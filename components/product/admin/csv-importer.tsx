@@ -1,110 +1,320 @@
 "use client";
 
 import Papa from "papaparse";
-import { Check, Download, FileUp, X } from "lucide-react";
-import { useMemo, useState } from "react";
-import { createFeedbackImport, importFeedbackBatch, type ImportFeedbackRow } from "@/app/actions";
-import type { FeedbackSource, FeedbackStatus } from "@/lib/types";
+import { ArrowLeft, Check, Download, FileSpreadsheet, FileUp, RefreshCw, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  createFeedbackImport,
+  finishFeedbackImport,
+  importFeedbackBatch,
+} from "@/app/actions";
+import {
+  CSV_BATCH_SIZE,
+  CSV_MAX_BYTES,
+  CSV_MAX_ROWS,
+  chunkCsvRows,
+  csvFields,
+  inferCsvMapping,
+  mapCsvRows,
+  validateCsvRows,
+  type CsvColumnMapping,
+  type CsvRowError,
+  type RawCsvRow,
+} from "@/lib/csv-import";
 
-type Field = "title" | "body" | "author_name" | "source" | "status" | "created_at" | "external_id";
-type RawRow = Record<string, string>;
-type RowError = { row: number; message: string; raw: RawRow };
+type Step = "upload" | "mapping" | "preview" | "importing" | "result";
+type ParserIssue = { row: number; message: string };
 
-const fields: { key: Field; label: string; required?: boolean }[] = [
-  { key: "title", label: "Title", required: true }, { key: "body", label: "Body", required: true },
-  { key: "author_name", label: "Author name" }, { key: "source", label: "Source" },
-  { key: "status", label: "Status" }, { key: "created_at", label: "Created at" },
-  { key: "external_id", label: "External ID" },
-];
-const sources = new Set<FeedbackSource>(["portal", "email", "interview", "support", "manual", "csv"]);
-const statuses = new Set<FeedbackStatus>(["new", "under_review", "planned", "in_progress", "shipped", "closed"]);
+const stages = ["Upload", "Map columns", "Review", "Complete"];
 
 export function CsvImporter({ workspaceId, boardId, onClose }: { workspaceId: string; boardId: string; onClose: () => void }) {
-  const [step, setStep] = useState<"upload" | "mapping" | "preview" | "result">("upload");
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [step, setStep] = useState<Step>("upload");
   const [filename, setFilename] = useState("");
   const [headers, setHeaders] = useState<string[]>([]);
-  const [rows, setRows] = useState<RawRow[]>([]);
-  const [mapping, setMapping] = useState<Partial<Record<Field, string>>>({});
+  const [rows, setRows] = useState<RawCsvRow[]>([]);
+  const [mapping, setMapping] = useState<CsvColumnMapping>({});
+  const [parserIssues, setParserIssues] = useState<ParserIssue[]>([]);
   const [notice, setNotice] = useState("");
   const [pending, setPending] = useState(false);
+  const [importId, setImportId] = useState("");
+  const [importedProgress, setImportedProgress] = useState(0);
   const [result, setResult] = useState({ imported: 0, failed: 0 });
 
-  const mapped = useMemo(() => rows.map((raw, index): ImportFeedbackRow => {
-    const value = (field: Field) => mapping[field] ? String(raw[mapping[field]!] ?? "").trim() : "";
-    const sourceValue = value("source").toLowerCase() as FeedbackSource;
-    const statusValue = value("status").toLowerCase().replace(/[ -]+/g, "_") as FeedbackStatus;
-    const dateValue = value("created_at");
-    return {
-      title: value("title"), body: value("body"), authorName: value("author_name") || undefined,
-      source: sources.has(sourceValue) ? sourceValue : "csv",
-      status: statuses.has(statusValue) ? statusValue : "new",
-      createdAt: dateValue ? (Number.isNaN(Date.parse(dateValue)) ? dateValue : new Date(dateValue).toISOString()) : undefined,
-      externalId: value("external_id") || undefined, rowIndex: index + 1,
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) dialog.showModal();
+    return () => {
+      if (dialog?.open) dialog.close();
     };
-  }), [mapping, rows]);
+  }, []);
 
-  const errors = useMemo<RowError[]>(() => mapped.flatMap((row, index) => {
-    const messages: string[] = [];
-    if (row.title.trim().length < 6 || row.title.length > 120) messages.push("title must be 6–120 characters");
-    if (row.body.trim().length < 12 || row.body.length > 2000) messages.push("body must be 12–2000 characters");
-    if (row.createdAt && Number.isNaN(Date.parse(row.createdAt))) messages.push("created_at is not a valid date");
-    return messages.length ? [{ row: index + 1, message: messages.join("; "), raw: rows[index] }] : [];
-  }), [mapped, rows]);
+  const mapped = useMemo(() => mapCsvRows(rows, mapping), [mapping, rows]);
+  const validation = useMemo(() => validateCsvRows(mapped, rows), [mapped, rows]);
+  const errors = useMemo<CsvRowError[]>(() => {
+    const byRow = new Map(validation.errors.map((error) => [error.row, error]));
+    parserIssues.forEach((issue) => {
+      const current = byRow.get(issue.row);
+      byRow.set(issue.row, {
+        row: issue.row,
+        message: current ? `${current.message}; ${issue.message}` : issue.message,
+        raw: rows[issue.row - 1] ?? {},
+      });
+    });
+    return [...byRow.values()].sort((left, right) => left.row - right.row);
+  }, [parserIssues, rows, validation.errors]);
+  const invalidRows = useMemo(() => new Set(errors.map((error) => error.row)), [errors]);
+  const validRows = useMemo(
+    () => validation.validRows.filter((row) => !invalidRows.has(row.rowIndex)),
+    [invalidRows, validation.validRows],
+  );
+  const errorByRow = useMemo(() => new Map(errors.map((error) => [error.row, error])), [errors]);
+  const duplicateMappings = useMemo(() => {
+    const chosen = Object.values(mapping).filter(Boolean);
+    return new Set(chosen).size !== chosen.length;
+  }, [mapping]);
+  const currentStage = step === "upload" ? 0 : step === "mapping" ? 1 : step === "result" ? 3 : 2;
+  const batchCount = Math.ceil(validRows.length / CSV_BATCH_SIZE);
 
   function chooseFile(file?: File) {
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { setNotice("The CSV file must be 2 MB or smaller."); return; }
-    Papa.parse<RawRow>(file, {
+    setNotice("");
+    if (!file.name.toLowerCase().endsWith(".csv") && file.type !== "text/csv") {
+      setNotice("Choose a .csv file.");
+      return;
+    }
+    if (file.size > CSV_MAX_BYTES) {
+      setNotice("The CSV file must be 2 MB or smaller.");
+      return;
+    }
+
+    Papa.parse<RawCsvRow>(file, {
       header: true,
       skipEmptyLines: "greedy",
+      transformHeader: (header) => header.trim(),
       complete(parsed) {
-        const parsedRows = parsed.data.slice(0, 1001);
-        if (parsedRows.length > 1000) { setNotice("The CSV can contain at most 1000 data rows."); return; }
-        if (!parsedRows.length || !parsed.meta.fields?.length) { setNotice("No data rows or headers were found."); return; }
-        const nextHeaders = parsed.meta.fields;
-        const autoMapping = Object.fromEntries(fields.flatMap((field) => {
-          const match = nextHeaders.find((header) => header.trim().toLowerCase().replace(/\s+/g, "_") === field.key);
-          return match ? [[field.key, match]] : [];
-        })) as Partial<Record<Field, string>>;
-        setFilename(file.name); setHeaders(nextHeaders); setRows(parsedRows); setMapping(autoMapping); setStep("mapping");
-        setNotice(parsed.errors.length ? `${parsed.errors.length} parser warnings found; review the preview carefully.` : "");
+        const parsedRows = parsed.data.slice(0, CSV_MAX_ROWS + 1);
+        if (parsedRows.length > CSV_MAX_ROWS) {
+          setNotice(`The CSV can contain at most ${CSV_MAX_ROWS} data rows.`);
+          return;
+        }
+        if (!parsedRows.length || !parsed.meta.fields?.length) {
+          setNotice("No data rows or headers were found.");
+          return;
+        }
+        setFilename(file.name);
+        setHeaders(parsed.meta.fields);
+        setRows(parsedRows);
+        setMapping(inferCsvMapping(parsed.meta.fields));
+        setParserIssues(parsed.errors.map((error) => ({
+          row: Math.max(1, (error.row ?? 0) + 1),
+          message: `CSV parser: ${error.message}`,
+        })));
+        setImportId("");
+        setImportedProgress(0);
+        setResult({ imported: 0, failed: 0 });
+        setStep("mapping");
       },
-      error(error) { setNotice(error.message); },
+      error(error) {
+        setNotice(error.message);
+      },
     });
   }
 
   function validateMapping() {
-    if (!mapping.title || !mapping.body) { setNotice("Map both Title and Body before continuing."); return; }
-    setNotice(""); setStep("preview");
+    if (!mapping.title || !mapping.body) {
+      setNotice("Map both Title and Body before continuing.");
+      return;
+    }
+    if (duplicateMappings) {
+      setNotice("Each CSV column can be mapped only once.");
+      return;
+    }
+    setNotice("");
+    setStep("preview");
   }
 
   async function runImport() {
-    setPending(true); setNotice("");
-    const started = await createFeedbackImport({ workspaceId, filename, totalRows: rows.length });
-    if (!started.ok || !started.value) { setNotice(started.message); setPending(false); return; }
-    let imported = 0;
-    for (let index = 0; index < mapped.length; index += 200) {
-      const batch = await importFeedbackBatch({ importId: started.value, workspaceId, boardId, rows: mapped.slice(index, index + 200) });
-      if (!batch.ok) { setNotice(batch.message); setPending(false); return; }
-      imported += batch.value ?? 0;
+    if (!validRows.length) {
+      setNotice("There are no valid rows to import. Fix the file or download the error report.");
+      return;
     }
-    setResult({ imported, failed: errors.length }); setStep("result"); setPending(false);
+
+    setPending(true);
+    setNotice("");
+    setStep("importing");
+    let activeImportId = importId;
+
+    if (!activeImportId) {
+      const started = await createFeedbackImport({ workspaceId, filename, totalRows: rows.length });
+      if (!started.ok || !started.value) {
+        setNotice(started.message);
+        setStep("preview");
+        setPending(false);
+        return;
+      }
+      activeImportId = started.value;
+      setImportId(activeImportId);
+    }
+
+    for (const batch of chunkCsvRows(validRows)) {
+      const imported = await importFeedbackBatch({ importId: activeImportId, workspaceId, boardId, rows: batch });
+      if (!imported.ok) {
+        setImportedProgress(imported.value ?? importedProgress);
+        setNotice(imported.message);
+        setStep("preview");
+        setPending(false);
+        return;
+      }
+      setImportedProgress(imported.value ?? 0);
+    }
+
+    const finished = await finishFeedbackImport({ importId: activeImportId, workspaceId });
+    if (!finished.ok || !finished.value) {
+      setNotice(finished.message);
+      setStep("preview");
+      setPending(false);
+      return;
+    }
+    setResult(finished.value);
+    setStep("result");
+    setPending(false);
   }
 
   function downloadErrors() {
     const csv = Papa.unparse(errors.map((error) => ({ row: error.row, error: error.message, ...error.raw })));
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${filename.replace(/\.csv$/i, "")}-errors.csv`; anchor.click(); URL.revokeObjectURL(url);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${filename.replace(/\.csv$/i, "")}-errors.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
-  return <div className="import-overlay" role="presentation"><section className="import-dialog" role="dialog" aria-modal="true" aria-labelledby="import-title">
-    <header><div><span className="app-kicker">CSV import · {step}</span><h2 id="import-title">Bring customer signals together.</h2></div><button className="icon-button" type="button" onClick={onClose} aria-label="Close import"><X size={15} /></button></header>
-    <div className="import-progress" aria-hidden="true">{["upload", "mapping", "preview", "result"].map((item, index) => <i key={item} data-active={index <= ["upload", "mapping", "preview", "result"].indexOf(step)} />)}</div>
-    {step === "upload" && <label className="csv-dropzone"><FileUp size={24} /><strong>Choose a CSV file</strong><span>Up to 2 MB and 1000 rows. Nothing is imported before preview.</span><input type="file" accept=".csv,text/csv" onChange={(event) => chooseFile(event.target.files?.[0])} /></label>}
-    {step === "mapping" && <div className="mapping-grid">{fields.map((field) => <label key={field.key}><span>{field.label}{field.required ? " *" : ""}</span><select value={mapping[field.key] ?? ""} onChange={(event) => setMapping((current) => ({ ...current, [field.key]: event.target.value || undefined }))}><option value="">Do not import</option>{headers.map((header) => <option key={header} value={header}>{header}</option>)}</select></label>)}</div>}
-    {step === "preview" && <div className="import-preview"><div className="import-summary"><div><strong>{rows.length - errors.length}</strong><span>ready</span></div><div><strong>{errors.length}</strong><span>invalid</span></div><div><strong>{Math.ceil(rows.length / 200)}</strong><span>batches</span></div></div><div className="preview-table"><table><thead><tr><th>Row</th><th>Title</th><th>Status</th><th>Validation</th></tr></thead><tbody>{mapped.slice(0, 8).map((row) => { const error = errors.find((item) => item.row === row.rowIndex); return <tr key={row.rowIndex}><td>{row.rowIndex}</td><td>{row.title || "—"}</td><td>{row.status}</td><td data-error={Boolean(error)}>{error?.message ?? "Ready"}</td></tr>; })}</tbody></table></div></div>}
-    {step === "result" && <div className="import-result"><span className="result-check"><Check size={24} /></span><h3>Import complete</h3><p>{result.imported} feedback items were added. {result.failed ? `${result.failed} invalid rows were skipped.` : "Every row passed validation."}</p>{result.failed > 0 && <button className="button button-outline" type="button" onClick={downloadErrors}><Download size={14} /> Download errors CSV</button>}</div>}
-    {notice && <p className="inline-notice" role="status">{notice}</p>}
-    <footer>{step !== "upload" && step !== "result" && <button className="button button-outline" type="button" onClick={() => setStep(step === "preview" ? "mapping" : "upload")}>Back</button>}<span />{step === "mapping" && <button className="button button-primary" type="button" onClick={validateMapping}>Validate preview</button>}{step === "preview" && <button className="button button-primary" type="button" disabled={pending} onClick={runImport}>{pending ? "Importing…" : `Import ${rows.length - errors.length} valid rows`}</button>}{step === "result" && <button className="button button-primary" type="button" onClick={onClose}>Done</button>}</footer>
-  </section></div>;
+  function closeDialog() {
+    if (!pending) onClose();
+  }
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className="import-overlay"
+      aria-labelledby="import-title"
+      onCancel={(event) => { event.preventDefault(); closeDialog(); }}
+      onClick={(event) => { if (event.target === event.currentTarget) closeDialog(); }}
+    >
+      <section className="import-dialog">
+        <header className="import-header">
+          <div>
+            <span className="app-kicker">CSV intake</span>
+            <h2 id="import-title">Turn a file into customer signals.</h2>
+          </div>
+          <button className="icon-button" type="button" onClick={closeDialog} disabled={pending} aria-label="Close import">
+            <X size={16} />
+          </button>
+        </header>
+
+        <ol className="import-progress" aria-label="Import progress">
+          {stages.map((label, index) => (
+            <li key={label} data-active={index <= currentStage} data-current={index === currentStage}>
+              <i>{index < currentStage ? <Check size={11} /> : index + 1}</i>
+              <span>{label}</span>
+            </li>
+          ))}
+        </ol>
+
+        <div className="import-body">
+          {step === "upload" && (
+            <label
+              className="csv-dropzone"
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => { event.preventDefault(); chooseFile(event.dataTransfer.files?.[0]); }}
+            >
+              <span className="dropzone-icon"><FileUp size={22} /></span>
+              <strong>Drop a CSV here or choose a file</strong>
+              <span>Maximum 2 MB and 1000 rows. Nothing is imported before review.</span>
+              <input type="file" accept=".csv,text/csv" onChange={(event) => chooseFile(event.target.files?.[0])} />
+            </label>
+          )}
+
+          {step === "mapping" && (
+            <div className="mapping-stage">
+              <div className="import-file-meta"><FileSpreadsheet size={17} /><div><strong>{filename}</strong><span>{rows.length} rows · {headers.length} columns</span></div></div>
+              <p>Match your column names to Pulseboard fields. Only title and body are required.</p>
+              <div className="mapping-grid">
+                {csvFields.map((field) => (
+                  <label key={field.key}>
+                    <span>{field.label}{field.required ? " *" : ""}</span>
+                    <select value={mapping[field.key] ?? ""} onChange={(event) => setMapping((current) => ({ ...current, [field.key]: event.target.value || undefined }))}>
+                      <option value="">Do not import</option>
+                      {headers.map((header) => <option key={header} value={header}>{header}</option>)}
+                    </select>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(step === "preview" || step === "importing") && (
+            <div className="import-preview">
+              <div className="import-summary">
+                <div><strong>{validRows.length}</strong><span>ready</span></div>
+                <div data-tone={errors.length ? "warning" : "quiet"}><strong>{errors.length}</strong><span>skipped</span></div>
+                <div><strong>{batchCount}</strong><span>batches</span></div>
+              </div>
+              {step === "importing" && (
+                <div className="import-running" role="status">
+                  <RefreshCw size={15} />
+                  <div><strong>Sending signals in safe batches…</strong><span>{importedProgress} of {validRows.length} imported</span></div>
+                  <progress max={validRows.length} value={importedProgress} />
+                </div>
+              )}
+              <div className="preview-table">
+                <table>
+                  <thead><tr><th>Row</th><th>Title</th><th>Source</th><th>Validation</th></tr></thead>
+                  <tbody>
+                    {mapped.slice(0, 10).map((row) => {
+                      const error = errorByRow.get(row.rowIndex);
+                      return (
+                        <tr key={row.rowIndex} data-error={Boolean(error)}>
+                          <td>{row.rowIndex}</td><td>{row.title || "—"}</td><td>{row.source}</td><td>{error?.message ?? "Ready"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {rows.length > 10 && <p className="preview-footnote">Showing the first 10 of {rows.length} rows.</p>}
+            </div>
+          )}
+
+          {step === "result" && (
+            <div className="import-result">
+              <span className="result-check"><Check size={24} /></span>
+              <span className="app-kicker">Intake complete</span>
+              <h3>{result.imported} signals are now in the inbox.</h3>
+              <p>{result.failed ? `${result.failed} invalid rows were skipped and kept in the error report.` : "Every row passed validation and is queued for semantic analysis."}</p>
+              {result.failed > 0 && <button className="button button-outline" type="button" onClick={downloadErrors}><Download size={14} /> Download errors CSV</button>}
+            </div>
+          )}
+
+          {notice && <p className="inline-notice import-notice" role="status">{notice}</p>}
+        </div>
+
+        <footer className="import-footer">
+          {step !== "upload" && step !== "result" && step !== "importing" ? (
+            <button className="button button-outline" type="button" onClick={() => setStep(step === "preview" ? "mapping" : "upload")}>
+              <ArrowLeft size={14} /> Back
+            </button>
+          ) : <span />}
+          <span className="import-footer-actions">
+            {step === "preview" && errors.length > 0 && <button className="button button-quiet" type="button" onClick={downloadErrors}><Download size={14} /> Error report</button>}
+            {step === "mapping" && <button className="button button-primary" type="button" onClick={validateMapping}>Review rows</button>}
+            {step === "preview" && <button className="button button-primary" type="button" disabled={pending || !validRows.length} onClick={runImport}>{importId ? "Retry import" : `Import ${validRows.length} valid rows`}</button>}
+            {step === "result" && <button className="button button-primary" type="button" onClick={onClose}>Open inbox</button>}
+          </span>
+        </footer>
+      </section>
+    </dialog>
+  );
 }

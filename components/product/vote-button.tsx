@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUp } from "lucide-react";
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { toggleVote } from "@/app/actions";
 import { rememberPendingAction } from "@/lib/pending-actions";
@@ -10,15 +10,11 @@ import type { FeedbackPost } from "@/lib/types";
 export function VoteButton({ post, readOnly }: { post: FeedbackPost; readOnly: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [votes, setVotes] = useState(post.votes);
-  const [voted, setVoted] = useState(Boolean(post.votedByViewer));
+  const [savedVote, setSavedVote] = useState<{ votes: number; voted: boolean } | null>(null);
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
-
-  useEffect(() => {
-    setVotes(post.votes);
-    setVoted(Boolean(post.votedByViewer));
-  }, [post.votedByViewer, post.votes]);
+  const votes = savedVote?.votes ?? post.votes;
+  const voted = savedVote?.voted ?? Boolean(post.votedByViewer);
 
   function vote() {
     if (readOnly) {
@@ -29,8 +25,7 @@ export function VoteButton({ post, readOnly }: { post: FeedbackPost; readOnly: b
     startTransition(async () => {
       const result = await toggleVote(post.id);
       if (result.ok && result.value) {
-        setVoted(result.value.voted);
-        setVotes(result.value.votes);
+        setSavedVote(result.value);
       } else if (result.message.includes("Sign in")) {
         rememberPendingAction({ type: "vote", feedbackId: post.id, returnTo: pathname });
         router.push(`/login?next=${encodeURIComponent(pathname)}`);

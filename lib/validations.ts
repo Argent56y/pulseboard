@@ -84,3 +84,21 @@ export const importRowSchema = z.object({
   externalId: z.string().trim().max(200).optional(),
   rowIndex: z.number().int().min(1).max(1000),
 });
+
+export const feedbackImportSchema = z.object({
+  workspaceId: z.string().uuid(),
+  filename: z.string().trim().min(1).max(255),
+  totalRows: z.number().int().min(1).max(1000),
+});
+
+export const feedbackImportBatchSchema = z.object({
+  importId: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+  boardId: z.string().uuid(),
+  rows: z.array(importRowSchema).min(1).max(200),
+});
+
+export const feedbackImportFinishSchema = z.object({
+  importId: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+});
