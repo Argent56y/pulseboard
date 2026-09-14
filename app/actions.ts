@@ -34,6 +34,20 @@ const unavailable: ActionResult = {
   message: "Connect Supabase to enable persistent changes.",
 };
 
+function mutationErrorMessage(
+  error: { code?: string; message: string } | null,
+  fallback: string,
+) {
+  if (!error) return fallback;
+  if (error.message.includes("Rate limit exceeded")) {
+    return "You have reached the hourly limit. Please wait a little and try again.";
+  }
+  if (error.code === "42501" || error.message.toLowerCase().includes("row-level security")) {
+    return "You do not have permission to make this change.";
+  }
+  return fallback;
+}
+
 async function authenticatedClient() {
   const supabase = await createClient();
   if (!supabase) return null;
@@ -107,7 +121,12 @@ export async function createFeedback(formData: FormData): Promise<ActionResult> 
     source: "portal",
   }).select("id").single();
 
-  if (error) return { ok: false, message: error.message };
+  if (error) {
+    return {
+      ok: false,
+      message: mutationErrorMessage(error, "Feedback could not be submitted. Please try again."),
+    };
+  }
   if (feedback && auth.email) {
     await auth.supabase.from("feedback_subscriptions").upsert({
       workspace_id: parsed.data.workspaceId,
@@ -117,7 +136,6 @@ export async function createFeedback(formData: FormData): Promise<ActionResult> 
       is_active: true,
       unsubscribed_at: null,
     }, { onConflict: "feedback_id,user_id" });
-    await auth.supabase.functions.invoke("embed-feedback", { body: { feedbackId: feedback.id } }).catch(() => undefined);
   }
   revalidatePath("/feedback", "layout");
   return { ok: true, message: "Feedback submitted.", value: feedback?.id };
@@ -156,7 +174,9 @@ export async function retryFeedbackAnalysis(feedbackId: string): Promise<ActionR
   return error ? { ok: false, message: "Analysis could not be restarted." } : { ok: true, message: "Analysis restarted." };
 }
 
-export async function toggleVote(feedbackId: string): Promise<ActionResult> {
+export async function toggleVote(
+  feedbackId: string,
+): Promise<ActionResult<{ voted: boolean; votes: number }>> {
   const auth = await authenticatedClient();
   if (!auth) return { ok: false, message: "Sign in to vote." };
 
@@ -179,9 +199,24 @@ export async function toggleVote(feedbackId: string): Promise<ActionResult> {
         workspace_id: post.workspace_id,
       });
 
-  if (result.error) return { ok: false, message: result.error.message };
+  if (result.error) {
+    return {
+      ok: false,
+      message: mutationErrorMessage(result.error, "Your vote could not be saved. Please try again."),
+    };
+  }
+
+  const { count } = await auth.supabase
+    .from("feedback_votes")
+    .select("id", { count: "exact", head: true })
+    .eq("feedback_id", feedbackId);
+  const voted = !current;
   revalidatePath("/feedback", "layout");
-  return { ok: true, message: current ? "Vote removed." : "Vote added." };
+  return {
+    ok: true,
+    message: voted ? "Vote added." : "Vote removed.",
+    value: { voted, votes: count ?? 0 },
+  };
 }
 
 export async function addComment(formData: FormData): Promise<ActionResult> {
@@ -208,17 +243,22 @@ export async function addComment(formData: FormData): Promise<ActionResult> {
     .eq("user_id", auth.userId)
     .maybeSingle();
 
-  const { error } = await auth.supabase.from("feedback_comments").insert({
+  const { data: comment, error } = await auth.supabase.from("feedback_comments").insert({
     workspace_id: post.workspace_id,
     feedback_id: parsed.data.feedbackId,
     author_id: auth.userId,
     body: parsed.data.body,
     is_staff: Boolean(member),
-  });
+  }).select("id").single();
 
-  if (error) return { ok: false, message: error.message };
+  if (error) {
+    return {
+      ok: false,
+      message: mutationErrorMessage(error, "Your comment could not be posted. Please try again."),
+    };
+  }
   revalidatePath("/feedback", "layout");
-  return { ok: true, message: "Comment added." };
+  return { ok: true, message: "Comment added.", value: comment?.id };
 }
 
 export async function updateFeedbackStatus(input: {

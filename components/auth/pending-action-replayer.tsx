@@ -37,7 +37,11 @@ export function PendingActionReplayer() {
       if (result.ok) {
         clearPendingAction();
         setMessage(`${result.message} Your unfinished action was restored.`);
-        router.refresh();
+        if (pending.type === "feedback" && result.value) {
+          router.replace(`${pending.returnTo.replace(/\/$/, "")}/post/${result.value}`);
+        } else {
+          router.refresh();
+        }
       } else if (!result.message.toLowerCase().includes("sign in")) {
         clearPendingAction();
         setMessage(result.message);

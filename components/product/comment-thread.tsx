@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useActionState } from "react";
+import { useActionState, useEffect, useRef } from "react";
 import { addComment, type ActionResult } from "@/app/actions";
 import type { FeedbackComment } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
@@ -20,6 +20,7 @@ export function CommentThread({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
   const [state, action, pending] = useActionState(
     async (_state: ActionResult, formData: FormData) => {
       const result = await addComment(formData);
@@ -32,10 +33,15 @@ export function CommentThread({
     initialState,
   );
 
+  useEffect(() => {
+    if (state.ok) formRef.current?.reset();
+  }, [state]);
+
   return (
     <section className="comment-section" aria-labelledby="comments-heading">
       <h2 id="comments-heading">Conversation</h2>
       <div className="comment-list">
+        {!comments.length && <div className="comment-empty"><strong>No comments yet.</strong><span>Add context, a use case or a question for the team.</span></div>}
         {comments.map((comment) => (
           <article key={comment.id} className={comment.isStaff ? "comment comment-staff" : "comment"}>
             <header><strong>{comment.authorName}</strong>{comment.isStaff && <span>TEAM</span>}</header>
@@ -47,13 +53,13 @@ export function CommentThread({
       {readOnly ? (
         <p className="form-hint">This demo conversation is read-only.</p>
       ) : (
-        <form action={action} className="comment-form form-stack">
+        <form ref={formRef} action={action} className="comment-form form-stack">
           <input type="hidden" name="feedbackId" value={feedbackId} />
           <div className="form-field">
             <label htmlFor="comment-body">Add context</label>
-            <textarea id="comment-body" name="body" minLength={2} maxLength={1000} required />
+            <textarea id="comment-body" name="body" minLength={2} maxLength={1000} placeholder="Add a use case or clarify why this matters." required />
           </div>
-          {state.message && <p className="form-hint" role="status">{state.message}</p>}
+          {state.message && <p className="form-hint form-notice" data-tone={state.ok ? "success" : "error"} role="status">{state.message}</p>}
           <button className="button button-primary" disabled={pending}>{pending ? "Posting…" : "Post comment"}</button>
         </form>
       )}
