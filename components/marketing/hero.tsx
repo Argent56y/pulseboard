@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
-import { motion } from "motion/react";
 import { HeroSignalCanvas } from "@/components/marketing/hero-signal-canvas";
 import { LocaleSwitch } from "@/components/locale-switch";
 import { localizedPath, marketingCopy, type Locale } from "@/lib/i18n";
@@ -20,18 +19,13 @@ export function Hero({ locale = "en" }: { locale?: Locale }) {
           <Link href={localizedPath(locale, "/demo")}>{copy.navBoard}</Link>
           <Link href={localizedPath(locale, "/demo/app/map")}>{copy.navDemo}</Link>
           <LocaleSwitch locale={locale} section="/" />
-          <Link href="/login" className="nav-action">
+          <Link href={locale === "ru" ? "/login?locale=ru" : "/login"} className="nav-action">
             {copy.navSignIn} <ArrowUpRight size={14} />
           </Link>
         </nav>
       </header>
 
-      <motion.div
-        className="hero-copy"
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-      >
+      <div className="hero-copy">
         <p className="eyebrow">{copy.eyebrow}</p>
         <h1 id="hero-title">Pulseboard.</h1>
         <p className="hero-promise">
@@ -45,7 +39,7 @@ export function Hero({ locale = "en" }: { locale?: Locale }) {
             {copy.secondary}
           </Link>
         </div>
-      </motion.div>
+      </div>
 
       <HeroSignalCanvas locale={locale} />
       <div className="hero-caption" aria-hidden="true">

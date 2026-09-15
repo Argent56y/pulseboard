@@ -189,15 +189,12 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
   const initials = viewer?.displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "SD";
 
   const nav = readOnly
-    ? (locale === "ru" ? [
-        { label: "Входящие", href: `${appRoot}/inbox`, icon: ClipboardList },
-        { label: "Signal Map", href: `${appRoot}/map`, icon: Map },
-      ] : [
-        { label: "Inbox", href: `${appRoot}/inbox`, icon: ClipboardList },
+    ? [
+        { label: locale === "ru" ? "Входящие" : "Inbox", href: `${appRoot}/inbox`, icon: ClipboardList },
         { label: "Signal Map", href: `${appRoot}/map`, icon: Map },
         { label: "Roadmap", href: `${appRoot}/roadmap`, icon: GitBranch },
-        { label: "Changelog", href: `${appRoot}/changelog`, icon: Megaphone },
-      ])
+        { label: locale === "ru" ? "Обновления" : "Changelog", href: `${appRoot}/changelog`, icon: Megaphone },
+      ]
     : [
         { label: "Inbox", href: `${appRoot}/inbox`, icon: ClipboardList },
         { label: "Signal Map", href: `${appRoot}/map`, icon: Map },
@@ -222,7 +219,7 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
 
   return (
     <div className="app-page">
-      <a className="skip-link" href="#main-content">Skip to content</a>
+      <a className="skip-link" href="#main-content">{locale === "ru" ? "Перейти к содержимому" : "Skip to content"}</a>
       <div ref={shellRef} className="app-shell" data-collapsed={collapsed}>
         <aside className="app-sidebar" aria-label={locale === "ru" ? "Навигация workspace" : "Workspace navigation"}>
           <div className="app-sidebar-brand">
@@ -304,7 +301,6 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
               <button className="header-search" type="button" aria-label={searchCopy.label} onClick={openCommandMenu}>
                 <Search size={14} />
                 <span>{locale === "ru" ? "Поиск" : "Search"}</span>
-                <kbd>⌘ K</kbd>
               </button>
               {!readOnly && (viewer?.avatarUrl ? <img className="avatar-small" src={viewer.avatarUrl} alt="" /> : <span className="avatar-small">{initials}</span>)}
             </div>

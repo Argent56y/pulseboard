@@ -23,13 +23,13 @@ export function WorkflowStory({ locale = "en" }: { locale?: Locale }) {
         </div>
         <div className="workflow-steps">
           <motion.svg className="workflow-trace" viewBox="0 0 80 1000" preserveAspectRatio="none" aria-hidden="true">
-            <path className="workflow-trace-rail" d="M24 0 C66 150 9 260 42 392 S12 628 44 760 S14 914 34 1000" />
+            <path className="workflow-trace-rail" d="M28 0 L28 1000" />
             <motion.path
               className="workflow-trace-active"
-              d="M24 0 C66 150 9 260 42 392 S12 628 44 760 S14 914 34 1000"
+              d="M28 0 L28 1000"
               style={{ pathLength: reduceMotion ? 1 : pathLength }}
             />
-            {!reduceMotion && <motion.circle className="workflow-traveler" cx="34" cy="0" r="5" style={{ y: travelerY, opacity: travelerOpacity }} />}
+            {!reduceMotion && <motion.circle className="workflow-traveler" cx="28" cy="0" r="5" style={{ y: travelerY, opacity: travelerOpacity }} />}
           </motion.svg>
           {copy.steps.map((step, index) => (
             <motion.article

@@ -54,9 +54,48 @@ test("founder demo navigation keeps the workspace shell in place", async ({ page
 
   await page.getByRole("link", { name: "Changelog" }).click();
   await expect(page).toHaveURL(/\/demo\/app\/changelog$/);
-  await expect(page.getByRole("heading", { name: "Published updates" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Release communication" })).toBeVisible();
   await expect(page.getByText("Publishing is disabled in the demo.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /edit|unpublish/i })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
+test("public board status filters change the visible feedback", async ({ page }) => {
+  await page.goto("/ru/demo");
+  await page.getByRole("link", { name: "Запланировано", exact: true }).click();
+  await expect(page).toHaveURL(/status=planned/);
+
+  const rows = page.locator(".feedback-row");
+  await expect(rows).not.toHaveCount(0);
+  const labels = await rows.locator(".status").allTextContents();
+  expect(labels.every((label) => label.trim() === "Запланировано")).toBe(true);
+});
+
+test("russian founder demo has the same workflow and working filters", async ({ page }) => {
+  await page.goto("/ru/demo/app/inbox");
+  await expect(page.locator(".app-shell")).toHaveAttribute("data-navigation-ready", "true");
+  await expect(page.getByRole("link", { name: "Входящие" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Signal Map" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Roadmap" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Обновления" })).toBeVisible();
+  await expect(page.locator(".header-search kbd")).toHaveCount(0);
+
+  await page.getByLabel("Фильтр по статусу").selectOption("planned");
+  await expect(page.locator(".table-count")).toContainText("9 / 36");
+  const statusSelects = page.locator("tbody .status-select");
+  await expect(statusSelects).not.toHaveCount(0);
+  const values = await statusSelects.evaluateAll((selects) => selects.map((select) => (select as HTMLSelectElement).value));
+  expect(values.every((value) => value === "planned")).toBe(true);
+
+  await page.getByRole("link", { name: "Обновления" }).click();
+  await expect(page.getByRole("heading", { name: "Обновления продукта" })).toBeVisible();
+  await expect(page.getByText("В демо публикация отключена.")).toBeVisible();
+});
+
+test("russian login exposes both GitHub and email OTP", async ({ page }) => {
+  await page.goto("/login?locale=ru");
+  await expect(page.getByRole("button", { name: "Продолжить через GitHub" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Получить код" })).toBeVisible();
 });
 
 test("mobile founder demo exposes the linear evidence fallback", async ({ page, isMobile }) => {

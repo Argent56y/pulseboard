@@ -22,17 +22,24 @@ export function HeroSignalCanvas({ locale = "en" }: { locale?: Locale }) {
   return (
     <motion.div
       className="hero-map"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 1, delay: 0.2 }}
+      initial={false}
       aria-label={locale === "ru" ? "Отзывы клиентов связаны с темой и решением roadmap" : "Customer requests connecting to a product theme and roadmap item"}
     >
       <svg className="hero-map-lines" viewBox="0 0 1000 520" preserveAspectRatio="none" aria-hidden="true">
-        <path d="M95 112 C310 112 310 250 530 250" />
-        <path d="M190 286 C340 286 360 250 530 250" />
-        <path d="M338 182 C430 182 430 250 530 250" />
-        <path d="M245 405 C390 405 405 250 530 250" />
-        <path className="hero-map-line-active" d="M530 250 C680 250 690 250 825 250" />
+        {["M95 112 C310 112 310 250 530 250", "M190 286 C340 286 360 250 530 250", "M338 182 C430 182 430 250 530 250", "M245 405 C390 405 405 250 530 250"].map((path, index) => <motion.path
+          key={path}
+          d={path}
+          initial={reduceMotion ? false : { pathLength: 0, opacity: 0 }}
+          animate={{ pathLength: 1, opacity: 1 }}
+          transition={{ duration: 0.65, delay: 0.28 + index * 0.1, ease: "easeOut" }}
+        />)}
+        <motion.path
+          className="hero-map-line-active"
+          d="M530 250 C680 250 690 250 825 250"
+          initial={reduceMotion ? false : { pathLength: 0, opacity: 0 }}
+          animate={{ pathLength: 1, opacity: 1 }}
+          transition={{ duration: 0.55, delay: 0.86, ease: "easeOut" }}
+        />
       </svg>
 
       {signals.map((signal, index) => (
@@ -41,7 +48,7 @@ export function HeroSignalCanvas({ locale = "en" }: { locale?: Locale }) {
           className="hero-signal"
           data-signal-index={index}
           style={{ left: `${signal.x}%`, top: `${signal.y}%` }}
-          initial={reduceMotion ? false : { opacity: 0, scale: 0.8 }}
+          initial={reduceMotion ? false : { opacity: 1, scale: 0.94 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.45, delay: signal.delay }}
         >
@@ -52,7 +59,7 @@ export function HeroSignalCanvas({ locale = "en" }: { locale?: Locale }) {
 
       <motion.div
         className="hero-theme"
-        initial={reduceMotion ? false : { opacity: 0, scale: 0.75 }}
+        initial={reduceMotion ? false : { opacity: 1, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.6, delay: 0.7 }}
       >
@@ -63,7 +70,7 @@ export function HeroSignalCanvas({ locale = "en" }: { locale?: Locale }) {
 
       <motion.div
         className="hero-roadmap"
-        initial={reduceMotion ? false : { opacity: 0, x: 20 }}
+        initial={reduceMotion ? false : { opacity: 1, x: 8 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.6, delay: 0.95 }}
       >
