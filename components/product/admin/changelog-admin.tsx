@@ -6,6 +6,7 @@ import { FormEvent, useState, useTransition } from "react";
 import { saveChangelog, setChangelogPublished } from "@/app/actions";
 import type { ChangelogEntry, RoadmapItem, Workspace } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
+import { InlineFeedback } from "@/components/ui/inline-feedback";
 
 export function ChangelogAdmin({ workspace, entries, roadmap = [], readOnly = false }: { workspace: Workspace; entries: ChangelogEntry[]; roadmap?: RoadmapItem[]; readOnly?: boolean }) {
   const router = useRouter();
@@ -31,7 +32,7 @@ export function ChangelogAdmin({ workspace, entries, roadmap = [], readOnly = fa
   }
 
   return <section className="app-section changelog-admin-grid">
-    <div><div className="section-toolbar"><div><h2>Release communication</h2><p>Draft, preview and publish updates tied to shipped work.</p></div><span className="table-count">{published.length} live · {drafts.length} drafts</span></div>{notice && <p className="inline-notice" role="status">{notice}</p>}
+    <div><div className="section-toolbar"><div><h2>Release communication</h2><p>Draft, preview and publish updates tied to shipped work.</p></div><span className="table-count">{published.length} live · {drafts.length} drafts</span></div><InlineFeedback message={notice} />
       {drafts.length > 0 && <section className="draft-list"><span className="app-kicker">Drafts</span>{drafts.map((entry) => <article key={entry.id}><div><strong>{entry.title}</strong><span>Not visible to customers</span></div><button type="button" onClick={() => selectEntry(entry)}><Pencil size={13} /> Edit</button></article>)}</section>}
       <div className="admin-release-list">{published.map((entry, index) => <article key={entry.id}><span className="release-number">{String(index + 1).padStart(2, "0")}</span><div><div className="release-meta"><Calendar size={11} /> {formatDate(entry.publishedAt!)}</div><h3>{entry.title}</h3><p>{entry.body}</p><div className="release-actions"><button type="button" onClick={() => selectEntry(entry)}><Pencil size={12} /> Edit</button><button type="button" disabled={pending} onClick={() => togglePublished(entry, false)}><Undo2 size={12} /> Unpublish</button></div></div></article>)}</div>{!published.length && <div className="empty-state"><strong>No published updates yet.</strong><span>Ship a roadmap item, then close the loop here.</span></div>}
     </div>

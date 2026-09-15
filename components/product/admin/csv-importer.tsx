@@ -21,6 +21,8 @@ import {
   type CsvRowError,
   type RawCsvRow,
 } from "@/lib/csv-import";
+import { AnimatedNumber } from "@/components/ui/animated-number";
+import { InlineFeedback } from "@/components/ui/inline-feedback";
 
 type Step = "upload" | "mapping" | "preview" | "importing" | "result";
 type ParserIssue = { row: number; message: string };
@@ -37,6 +39,7 @@ export function CsvImporter({ workspaceId, boardId, onClose }: { workspaceId: st
   const [parserIssues, setParserIssues] = useState<ParserIssue[]>([]);
   const [notice, setNotice] = useState("");
   const [pending, setPending] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   const [importId, setImportId] = useState("");
   const [importedProgress, setImportedProgress] = useState(0);
   const [result, setResult] = useState({ imported: 0, failed: 0 });
@@ -227,12 +230,16 @@ export function CsvImporter({ workspaceId, boardId, onClose }: { workspaceId: st
           {step === "upload" && (
             <label
               className="csv-dropzone"
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => { event.preventDefault(); chooseFile(event.dataTransfer.files?.[0]); }}
+              data-dragging={dragActive}
+              onDragEnter={(event) => { event.preventDefault(); setDragActive(true); }}
+              onDragOver={(event) => { event.preventDefault(); setDragActive(true); }}
+              onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragActive(false); }}
+              onDrop={(event) => { event.preventDefault(); setDragActive(false); chooseFile(event.dataTransfer.files?.[0]); }}
             >
               <span className="dropzone-icon"><FileUp size={22} /></span>
               <strong>Drop a CSV here or choose a file</strong>
               <span>Maximum 2 MB and 1000 rows. Nothing is imported before review.</span>
+              <span className="dropzone-format"><b>CSV</b><i /> title and body required</span>
               <input type="file" accept=".csv,text/csv" onChange={(event) => chooseFile(event.target.files?.[0])} />
             </label>
           )}
@@ -258,15 +265,18 @@ export function CsvImporter({ workspaceId, boardId, onClose }: { workspaceId: st
           {(step === "preview" || step === "importing") && (
             <div className="import-preview">
               <div className="import-summary">
-                <div><strong>{validRows.length}</strong><span>ready</span></div>
-                <div data-tone={errors.length ? "warning" : "quiet"}><strong>{errors.length}</strong><span>skipped</span></div>
-                <div><strong>{batchCount}</strong><span>batches</span></div>
+                <div><AnimatedNumber value={validRows.length} /><span>ready</span></div>
+                <div data-tone={errors.length ? "warning" : "quiet"}><AnimatedNumber value={errors.length} /><span>skipped</span></div>
+                <div><AnimatedNumber value={batchCount} /><span>batches</span></div>
               </div>
               {step === "importing" && (
                 <div className="import-running" role="status">
                   <RefreshCw size={15} />
                   <div><strong>Sending signals in safe batches…</strong><span>{importedProgress} of {validRows.length} imported</span></div>
-                  <progress max={validRows.length} value={importedProgress} />
+                  <div className="labeled-progress" aria-label={`${importedProgress} of ${validRows.length} imported`}>
+                    <i style={{ width: `${validRows.length ? Math.min(100, (importedProgress / validRows.length) * 100) : 0}%` }} />
+                    <span>{validRows.length ? Math.round((importedProgress / validRows.length) * 100) : 0}%</span>
+                  </div>
                 </div>
               )}
               <div className="preview-table">
@@ -292,13 +302,13 @@ export function CsvImporter({ workspaceId, boardId, onClose }: { workspaceId: st
             <div className="import-result">
               <span className="result-check"><Check size={24} /></span>
               <span className="app-kicker">Intake complete</span>
-              <h3>{result.imported} signals are now in the inbox.</h3>
+              <h3><AnimatedNumber value={result.imported} /> signals are now in the inbox.</h3>
               <p>{result.failed ? `${result.failed} invalid rows were skipped and kept in the error report.` : "Every row passed validation and is queued for semantic analysis."}</p>
               {result.failed > 0 && <button className="button button-outline" type="button" onClick={downloadErrors}><Download size={14} /> Download errors CSV</button>}
             </div>
           )}
 
-          {notice && <p className="inline-notice import-notice" role="status">{notice}</p>}
+          <InlineFeedback message={notice} tone="warning" className="import-notice" />
         </div>
 
         <footer className="import-footer">

@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { MessageSquare, Search, SlidersHorizontal } from "lucide-react";
+import { MessageSquare, Search } from "lucide-react";
 import { VoteButton } from "@/components/product/vote-button";
 import { FeedbackTransitionLink } from "@/components/product/feedback-transition-link";
 import type { FeedbackPost, FeedbackStatus, Workspace } from "@/lib/types";
 import { feedbackStatusLabel, formatDate, sourceLabel } from "@/lib/utils";
 import { localizedPath, type Locale } from "@/lib/i18n";
+import { PublicStatusTabs } from "@/components/product/public-status-tabs";
 
 interface FeedbackBoardProps {
   workspace: Workspace;
@@ -26,13 +27,11 @@ export function FeedbackBoard({ workspace, posts, query = "", status, nextCursor
   return <>
     <form className="public-controls" action={root}>
       <label className="search-field"><Search size={16} aria-hidden="true" /><span className="sr-only">{locale === "ru" ? "Поиск отзывов" : "Search feedback"}</span><input name="q" defaultValue={query} placeholder={locale === "ru" ? "Поиск отзывов" : "Search feedback"} /></label>
-      <SlidersHorizontal size={15} aria-hidden="true" />
-      <select className="filter-select" name="status" defaultValue={status ?? "all"} aria-label={locale === "ru" ? "Фильтр по статусу" : "Filter by status"}>
-        <option value="all">{locale === "ru" ? "Все статусы" : "All statuses"}</option><option value="new">{feedbackStatusLabel("new", locale)}</option><option value="under_review">{feedbackStatusLabel("under_review", locale)}</option><option value="planned">{feedbackStatusLabel("planned", locale)}</option><option value="in_progress">{feedbackStatusLabel("in_progress", locale)}</option><option value="shipped">{feedbackStatusLabel("shipped", locale)}</option><option value="closed">{feedbackStatusLabel("closed", locale)}</option>
-      </select>
+      {status && <input type="hidden" name="status" value={status} />}
       <button className="button button-small button-outline" type="submit">{locale === "ru" ? "Применить" : "Apply"}</button>
       {(query || status) && <Link className="clear-filters" href={root}>{locale === "ru" ? "Сбросить" : "Clear"}</Link>}
     </form>
+    <PublicStatusTabs root={root} active={status ?? "all"} query={query} locale={locale} />
 
     <div className="public-feedback-list" aria-live="polite">
       {publicPosts.length ? publicPosts.map((post) => <article className={`feedback-row ${post.visibility === "merged" ? "feedback-row-merged" : ""}`} key={post.id}>

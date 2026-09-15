@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { linkFeedbackToTheme, moderateFeedback, retryFeedbackAnalysis, reviewDuplicateSuggestion, reviewSuggestion, updateFeedbackStatus } from "@/app/actions";
 import { CsvImporter } from "@/components/product/admin/csv-importer";
+import { AnimatedNumber } from "@/components/ui/animated-number";
+import { InlineFeedback } from "@/components/ui/inline-feedback";
 import type { DuplicateLink, FeedbackImport, FeedbackPost, FeedbackSource, FeedbackStatus, Theme, ThemeLink } from "@/lib/types";
 import { feedbackStatusLabel, formatDate, sourceLabel } from "@/lib/utils";
 
@@ -57,20 +59,20 @@ export function InboxClient({ posts, themes = [], themeLinks = [], duplicateLink
 
   return <>
     <section className="kpi-strip" aria-label="Inbox summary">
-      <div className="kpi-item"><span>Untriaged</span><strong>{newCount}</strong><small>needs review</small></div>
-      <div className="kpi-item"><span>Analyzed</span><strong>{readyCount}</strong><small>semantic ready</small></div>
-      <div className="kpi-item"><span>In direction</span><strong>{plannedCount}</strong><small>roadmap linked</small></div>
-      <div className="kpi-item"><span>Customer votes</span><strong>{totalVotes}</strong><small>across signals</small></div>
+      <div className="kpi-item"><span>Untriaged</span><AnimatedNumber value={newCount} /><small>needs review</small></div>
+      <div className="kpi-item"><span>Analyzed</span><AnimatedNumber value={readyCount} /><small>semantic ready</small></div>
+      <div className="kpi-item"><span>In direction</span><AnimatedNumber value={plannedCount} /><small>roadmap linked</small></div>
+      <div className="kpi-item"><span>Customer votes</span><AnimatedNumber value={totalVotes} /><small>across signals</small></div>
     </section>
     <section className="app-section inbox-layout">
       <div className="inbox-table-pane">
         <div className="section-toolbar"><div><h2>Customer signals</h2><p>Review raw feedback, then turn useful patterns into evidence.</p></div><div className="toolbar-actions">{!readOnly && <button className="button button-small button-outline" type="button" onClick={() => setShowImport(true)}><FileUp size={13} /> Import CSV</button>}<span className="table-count">{filtered.length} of {posts.length}</span></div></div>
         <div className="table-toolbar" role="toolbar" aria-label="Feedback filters"><label className="app-search"><Search size={14} /><span className="sr-only">Search inbox</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search title, message or customer" /></label><select className="filter-select" value={status} onChange={(event) => setStatus(event.target.value as FeedbackStatus | "all")} aria-label="Filter by status"><option value="all">All statuses</option>{statuses.map((value) => <option value={value} key={value}>{feedbackStatusLabel(value)}</option>)}</select><select className="filter-select" value={source} onChange={(event) => setSource(event.target.value as FeedbackSource | "all")} aria-label="Filter by source"><option value="all">All sources</option>{sources.map((value) => <option value={value} key={value}>{sourceLabel(value)}</option>)}</select></div>
-        {notice && <p className="inline-notice" role="status">{notice}</p>}
+        <InlineFeedback message={notice} />
         <div className="table-wrap"><table className="app-table"><thead><tr><th>Signal</th><th>Source</th><th>Reach</th><th>Analysis</th><th>Status</th><th>Date</th></tr></thead><tbody>{filtered.map((post) => <tr key={post.id} data-selected={post.id === selectedId} data-visibility={post.visibility} onClick={() => setSelectedId(post.id)}><td><button className="table-title-button" type="button" onClick={() => setSelectedId(post.id)}><span className="table-title">{post.title}</span><span className="table-subtitle">{post.body}</span></button></td><td><span className="source-label">{sourceLabel(post.source)}</span></td><td>{post.votes} votes · {post.comments} comments</td><td><span className={`analysis-state analysis-${post.embeddingState}`}><Sparkles size={12} /> {analysisLabel[post.embeddingState]}</span></td><td><select className="status-select" value={post.status} disabled={isPending || readOnly} onClick={(event) => event.stopPropagation()} onChange={(event) => run(() => updateFeedbackStatus({ feedbackId: post.id, status: event.target.value }))} aria-label={`Status for ${post.title}`}>{statuses.map((value) => <option value={value} key={value}>{feedbackStatusLabel(value)}</option>)}</select></td><td>{formatDate(post.createdAt)}</td></tr>)}</tbody></table>{!filtered.length && <div className="empty-state"><strong>No signals match these filters.</strong><span>Reset the filters or import a customer feedback CSV.</span></div>}</div>
         {imports.length > 0 && <div className="recent-imports"><span className="app-kicker">Recent imports</span>{imports.slice(0, 3).map((item) => <div key={item.id}><span className={`import-state-dot import-state-${item.state}`} /><strong>{item.filename}</strong><span>{item.importedRows} added{item.failedRows ? ` · ${item.failedRows} skipped` : ""} · {item.state.replaceAll("_", " ")}</span></div>)}</div>}
       </div>
-      <aside className="inbox-inspector" aria-label="Feedback inspector">{selected ? <>
+      <aside className="inbox-inspector scroll-fade-y" aria-label="Feedback inspector">{selected ? <>
         <header><div><span className="app-kicker">Customer signal</span><h2>{selected.title}</h2></div><Link href={`/feedback/${workspaceSlug}/post/${selected.id}`} aria-label="Open public feedback"><ExternalLink size={15} /></Link></header>
         <p className="inspector-quote">“{selected.body}”</p><div className="inspector-meta"><div><span>Customer</span><strong>{selected.authorName}</strong></div><div><span>Reach</span><strong>{selected.votes} votes · {selected.comments} comments</strong></div><div><span>Source</span><strong>{sourceLabel(selected.source)}</strong></div><div><span>Visibility</span><strong>{selected.visibility ?? "published"}</strong></div></div>
         <div className={`analysis-callout analysis-callout-${selected.embeddingState}`} aria-live="polite"><Sparkles size={14} /><div><strong>{selected.embeddingState === "ready" ? "Analysis complete" : selected.embeddingState === "pending" ? "Analysis queued" : "Analysis needs attention"}</strong><span>{selected.embeddingState === "ready" ? "Strong matches are ready for founder review." : selected.embeddingState === "pending" ? "The worker is preparing theme and duplicate suggestions." : "The feedback remains available. Retry the analysis when ready."}</span></div>{selected.embeddingState === "failed" && <button className="button button-small button-outline" disabled={isPending} type="button" onClick={() => run(() => retryFeedbackAnalysis(selected.id))}><RotateCcw size={13} /> Retry</button>}</div>

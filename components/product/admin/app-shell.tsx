@@ -7,16 +7,20 @@ import {
   ChevronsLeft,
   ChevronsRight,
   ClipboardList,
+  Clock3,
   ExternalLink,
   GitBranch,
+  Layers3,
   Map,
   Megaphone,
+  MessageSquare,
   Search,
   Settings,
   LogOut,
   X,
 } from "lucide-react";
 import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { signOut } from "@/app/actions";
 import type { CommandItem, ViewerProfile, Workspace, WorkspaceMembership, WorkspaceRole } from "@/lib/types";
 import { LocaleSwitch } from "@/components/locale-switch";
@@ -50,6 +54,8 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
   const [navigationPending, startNavigation] = useTransition();
   const [commandQuery, setCommandQuery] = useState("");
   const [activeCommand, setActiveCommand] = useState(0);
+  const [recentCommandIds, setRecentCommandIds] = useState<string[]>([]);
+  const reduceMotion = useReducedMotion();
   const commandRef = useRef<HTMLDialogElement>(null);
   const commandInputRef = useRef<HTMLInputElement>(null);
   const openCommandMenu = useCallback(() => {
@@ -73,6 +79,18 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
   }, [pathname, locale]);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const saved = window.localStorage.getItem("pulseboard-recent-commands");
+        if (saved) setRecentCommandIds(JSON.parse(saved));
+      } catch {
+        setRecentCommandIds([]);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
     const shell = shellRef.current;
     if (!shell) return;
     shell.dataset.navigationReady = "true";
@@ -90,10 +108,44 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [openCommandMenu]);
 
-  const filteredCommands = useMemo(() => {
+  const commandGroups = useMemo(() => {
     const query = commandQuery.trim().toLowerCase();
-    return (query ? commands.filter((item) => `${item.label} ${item.detail}`.toLowerCase().includes(query)) : commands).slice(0, 12);
-  }, [commandQuery, commands]);
+    const matches = (query ? commands.filter((item) => `${item.label} ${item.detail} ${item.kind}`.toLowerCase().includes(query)) : commands).slice(0, 18);
+    const groups: Array<{ key: string; label: string; items: CommandItem[] }> = [];
+    const used = new Set<string>();
+
+    if (!query) {
+      const recent = recentCommandIds
+        .map((id) => commands.find((item) => `${item.kind}:${item.id}` === id))
+        .filter(Boolean)
+        .slice(0, 4) as CommandItem[];
+      if (recent.length) {
+        recent.forEach((item) => used.add(`${item.kind}:${item.id}`));
+        groups.push({ key: "recent", label: locale === "ru" ? "Недавние" : "Recent", items: recent });
+      }
+    }
+
+    const labels = {
+      feedback: locale === "ru" ? "Отзывы" : "Feedback",
+      theme: locale === "ru" ? "Темы" : "Themes",
+      roadmap: "Roadmap",
+    };
+    (["feedback", "theme", "roadmap"] as const).forEach((kind) => {
+      const items = matches.filter((item) => item.kind === kind && !used.has(`${item.kind}:${item.id}`));
+      if (items.length) groups.push({ key: kind, label: labels[kind], items });
+    });
+
+    let index = 0;
+    return groups.map((group) => ({
+      ...group,
+      items: group.items.map((item) => ({ ...item, commandIndex: index++ })),
+    }));
+  }, [commandQuery, commands, locale, recentCommandIds]);
+
+  const filteredCommands = useMemo(
+    () => commandGroups.flatMap((group) => group.items),
+    [commandGroups],
+  );
 
   const searchCopy = locale === "ru" ? {
     label: "Поиск по workspace",
@@ -119,7 +171,17 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
     commandRef.current?.close();
   }
 
+  function rememberCommand(item: CommandItem) {
+    const key = `${item.kind}:${item.id}`;
+    setRecentCommandIds((current) => {
+      const next = [key, ...current.filter((id) => id !== key)].slice(0, 6);
+      try { window.localStorage.setItem("pulseboard-recent-commands", JSON.stringify(next)); } catch { /* storage is optional */ }
+      return next;
+    });
+  }
+
   function openCommand(item: CommandItem) {
+    rememberCommand(item);
     closeCommandMenu();
     router.push(item.href);
   }
@@ -290,20 +352,38 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
           />
           <button type="button" onClick={closeCommandMenu} aria-label={searchCopy.close}><X size={16} /></button>
         </div>
-        <div className="command-results" id="workspace-command-results" role="listbox" aria-label={searchCopy.label}>
-          {filteredCommands.map((item, index) => <Link
-            id={`command-${item.kind}-${item.id}`}
-            key={`${item.kind}-${item.id}`}
-            href={item.href}
-            role="option"
-            aria-selected={index === activeCommand}
-            data-active={index === activeCommand}
-            onMouseEnter={() => setActiveCommand(index)}
-            onClick={closeCommandMenu}
-          >
-            <span className="command-result-copy"><strong>{item.label}</strong><small>{item.detail}</small></span>
-            <span className={`command-kind command-kind-${item.kind}`}>{item.kind === "feedback" ? (locale === "ru" ? "Отзыв" : "Feedback") : item.kind === "theme" ? (locale === "ru" ? "Тема" : "Theme") : "Roadmap"}</span>
-          </Link>)}
+        <div className="command-results scroll-fade-y" id="workspace-command-results" role="listbox" aria-label={searchCopy.label}>
+          <AnimatePresence initial={false} mode="popLayout">
+            {commandGroups.map((group) => <motion.section
+              className="command-group"
+              key={`${commandQuery ? "search" : "browse"}-${group.key}`}
+              layout={!reduceMotion}
+              initial={reduceMotion ? false : { opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduceMotion ? undefined : { opacity: 0, y: -4 }}
+              transition={{ duration: 0.15 }}
+            >
+              <header><span>{group.key === "recent" && <Clock3 size={11} aria-hidden="true" />}{group.label}</span><small>{group.items.length}</small></header>
+              {group.items.map((item) => {
+                const index = "commandIndex" in item ? Number(item.commandIndex) : 0;
+                const Icon = item.kind === "feedback" ? MessageSquare : item.kind === "theme" ? Layers3 : GitBranch;
+                return <Link
+                  id={`command-${item.kind}-${item.id}`}
+                  key={`${item.kind}-${item.id}`}
+                  href={item.href}
+                  role="option"
+                  aria-selected={index === activeCommand}
+                  data-active={index === activeCommand}
+                  onMouseEnter={() => setActiveCommand(index)}
+                  onClick={() => { rememberCommand(item); closeCommandMenu(); }}
+                >
+                  <span className={`command-result-icon command-result-icon-${item.kind}`}><Icon size={15} aria-hidden="true" /></span>
+                  <span className="command-result-copy"><strong>{item.label}</strong><small>{item.detail}</small></span>
+                  <span className={`command-kind command-kind-${item.kind}`}>{item.kind === "feedback" ? (locale === "ru" ? "Отзыв" : "Feedback") : item.kind === "theme" ? (locale === "ru" ? "Тема" : "Theme") : "Roadmap"}</span>
+                </Link>;
+              })}
+            </motion.section>)}
+          </AnimatePresence>
           {!filteredCommands.length && <div className="command-empty"><Search size={19} /><strong>{searchCopy.empty}</strong><span>{searchCopy.emptyHint}</span></div>}
         </div>
         <footer className="command-footer">

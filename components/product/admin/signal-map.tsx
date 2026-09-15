@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import {
   Background,
   BaseEdge,
@@ -15,11 +16,12 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { Check, RotateCcw, Sparkles, X } from "lucide-react";
+import { Check, List, Map as MapIcon, RotateCcw, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import { reviewSuggestion } from "@/app/actions";
 import type { FeedbackPost, FeedbackSource, FeedbackStatus, GraphData, RoadmapItem, Theme } from "@/lib/types";
 import { feedbackStatusLabel, sourceLabel } from "@/lib/utils";
 import type { Locale } from "@/lib/i18n";
+import { InlineFeedback } from "@/components/ui/inline-feedback";
 
 type SignalNodeKind = "feedback" | "theme" | "roadmap";
 type SignalNodeData = {
@@ -30,30 +32,35 @@ type SignalNodeData = {
   selected: boolean;
   rings?: number;
   caption?: string;
+  tooltip: string;
+  tooltipLabel: string;
 };
 type SignalNode = Node<SignalNodeData>;
 
 function FeedbackNode({ data }: NodeProps<SignalNode>) {
-  return <div className={`signal-node signal-node-feedback ${data.selected ? "signal-node-selected" : ""}`}>
+  return <div className={`signal-node signal-node-feedback ${data.selected ? "signal-node-selected" : ""}`} tabIndex={0} aria-label={`${data.title}. ${data.tooltip}`}>
     <Handle className="node-handle" type="target" position={Position.Left} />
     <strong>{data.title}</strong><span>{data.meta}</span>
+    <span className="node-tooltip" role="tooltip"><b>{data.tooltipLabel}</b><small>{data.tooltip}</small></span>
     <Handle className="node-handle" type="source" position={Position.Right} />
   </div>;
 }
 
 function ThemeNode({ data }: NodeProps<SignalNode>) {
-  return <div className={`signal-node signal-node-theme ${data.selected ? "signal-node-selected" : ""}`}>
+  return <div className={`signal-node signal-node-theme ${data.selected ? "signal-node-selected" : ""}`} tabIndex={0} aria-label={`${data.title}. ${data.tooltip}`}>
     <span className="evidence-rings" aria-hidden="true">{Array.from({ length: data.rings ?? 1 }, (_, index) => <i key={index} />)}</span>
     <Handle className="node-handle" type="target" position={Position.Left} />
     <strong>{data.title}</strong><span>{data.meta}</span><em>{data.caption ?? "signal cluster"}</em>
+    <span className="node-tooltip" role="tooltip"><b>{data.tooltipLabel}</b><small>{data.tooltip}</small></span>
     <Handle className="node-handle" type="source" position={Position.Right} />
   </div>;
 }
 
 function RoadmapNode({ data }: NodeProps<SignalNode>) {
-  return <div className={`signal-node signal-node-roadmap ${data.selected ? "signal-node-selected" : ""}`} style={{ borderLeftColor: data.accent }}>
+  return <div className={`signal-node signal-node-roadmap ${data.selected ? "signal-node-selected" : ""}`} style={{ borderLeftColor: data.accent }} tabIndex={0} aria-label={`${data.title}. ${data.tooltip}`}>
     <Handle className="node-handle" type="target" position={Position.Left} />
     <strong>{data.title}</strong><span>{data.meta}</span>
+    <span className="node-tooltip" role="tooltip"><b>{data.tooltipLabel}</b><small>{data.tooltip}</small></span>
   </div>;
 }
 
@@ -83,7 +90,10 @@ export function SignalMap({ graph, readOnly = false, initialSelected, locale = "
   const [status, setStatus] = useState<FeedbackStatus | "all">("all");
   const [notice, setNotice] = useState("");
   const [links, setLinks] = useState(graph.links);
+  const [mobileView, setMobileView] = useState<"map" | "list">("list");
+  const [mobileFilters, setMobileFilters] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const reduceMotion = useReducedMotion();
 
   const filteredFeedback = useMemo(() => graph.feedback.filter((post) =>
     (source === "all" || post.source === source) && (status === "all" || post.status === status),
@@ -136,7 +146,7 @@ export function SignalMap({ graph, readOnly = false, initialSelected, locale = "
     const nextEdges: Edge[] = [];
     graph.themes.forEach((theme, themeIndex) => {
       const baseY = 34 + themeIndex * 120;
-      nextNodes.push({ id: theme.id, type: "theme", position: { x: 350, y: baseY }, data: { kind: "theme", title: theme.name, meta: `${theme.signalCount} ${locale === "ru" ? "сигналов" : "signals"} · ${theme.velocity >= 0 ? "+" : ""}${theme.velocity}%`, caption: locale === "ru" ? "кластер сигналов" : "signal cluster", selected: theme.id === selectedId, rings: Math.max(1, Math.min(4, Math.ceil(theme.signalCount / 3))) } });
+      nextNodes.push({ id: theme.id, type: "theme", position: { x: 350, y: baseY }, data: { kind: "theme", title: theme.name, meta: `${theme.signalCount} ${locale === "ru" ? "сигналов" : "signals"} · ${theme.velocity >= 0 ? "+" : ""}${theme.velocity}%`, caption: locale === "ru" ? "кластер сигналов" : "signal cluster", tooltipLabel: locale === "ru" ? "Тема" : "Theme", tooltip: locale === "ru" ? `${theme.signalCount} связанных отзывов. Нажмите, чтобы увидеть исходные формулировки.` : `${theme.signalCount} linked messages. Open to inspect the source language.`, selected: theme.id === selectedId, rings: Math.max(1, Math.min(4, Math.ceil(theme.signalCount / 3))) } });
     });
 
     const themeSlots = new Map<string, number>();
@@ -159,6 +169,8 @@ export function SignalMap({ graph, readOnly = false, initialSelected, locale = "
           kind: "feedback",
           title: post.title,
           meta: postLinks.length ? `${sourceLabel(post.source, locale)} · ${post.votes} ${locale === "ru" ? "голосов" : "votes"}` : `${locale === "ru" ? "Ожидает тему" : "Awaiting theme"} · ${sourceLabel(post.source, locale)}`,
+          tooltipLabel: locale === "ru" ? "Отзыв клиента" : "Customer signal",
+          tooltip: locale === "ru" ? `${sourceLabel(post.source, locale)}, ${post.votes} голосов. Нажмите, чтобы проверить связи.` : `${sourceLabel(post.source, locale)}, ${post.votes} votes. Open to review its evidence links.`,
           selected: post.id === selectedId,
         },
       });
@@ -177,7 +189,7 @@ export function SignalMap({ graph, readOnly = false, initialSelected, locale = "
         }));
     });
     graph.roadmap.forEach((item, index) => {
-      nextNodes.push({ id: item.id, type: "roadmap", position: { x: 690, y: 74 + index * 174 }, data: { kind: "roadmap", title: item.title, meta: `${feedbackStatusLabel(item.status, locale)} · ${item.feedbackCount} ${locale === "ru" ? "сигналов" : "signals"}`, accent: roadmapColors[item.status], selected: item.id === selectedId } });
+      nextNodes.push({ id: item.id, type: "roadmap", position: { x: 690, y: 74 + index * 174 }, data: { kind: "roadmap", title: item.title, meta: `${feedbackStatusLabel(item.status, locale)} · ${item.feedbackCount} ${locale === "ru" ? "сигналов" : "signals"}`, tooltipLabel: locale === "ru" ? "Решение roadmap" : "Roadmap decision", tooltip: locale === "ru" ? `${item.feedbackCount} отзывов объясняют приоритет этого решения.` : `${item.feedbackCount} messages explain why this decision is prioritized.`, accent: roadmapColors[item.status], selected: item.id === selectedId } });
       item.themeIds.forEach((themeId) => nextEdges.push({
         id: `roadmap-${item.id}-${themeId}`,
         source: themeId,
@@ -208,25 +220,25 @@ export function SignalMap({ graph, readOnly = false, initialSelected, locale = "
   }
 
   return (
-    <>
+    <section className="signal-map-surface" data-mobile-view={mobileView}>
       <div className="map-toolbar">
         <div className="map-toolbar-copy"><strong>{locale === "ru" ? "Signal Map · карта связей" : "Evidence network"}</strong><span>{locale === "ru" ? `${visibleFeedback.length} отзывов · ${graph.themes.length} тем · ${graph.roadmap.length} решений · вымышленные данные` : `${visibleFeedback.length} visible messages · ${graph.themes.length} themes · ${graph.roadmap.length} decisions`}</span></div>
-        <div className="filter-row">
-          <select className="filter-select" value={source} onChange={(event) => setSource(event.target.value as FeedbackSource | "all")} aria-label="Filter map by source">
+        <div className="filter-row" data-mobile-open={mobileFilters}>
+          <select className="filter-select" value={source} onChange={(event) => setSource(event.target.value as FeedbackSource | "all")} aria-label={locale === "ru" ? "Фильтр карты по источнику" : "Filter map by source"}>
             <option value="all">{locale === "ru" ? "Все источники" : "Every source"}</option>
             {(["portal", "email", "interview", "support"] as FeedbackSource[]).map((value) => <option key={value} value={value}>{sourceLabel(value, locale)}</option>)}
           </select>
-          <select className="filter-select" value={status} onChange={(event) => setStatus(event.target.value as FeedbackStatus | "all")} aria-label="Filter map by status">
+          <select className="filter-select" value={status} onChange={(event) => setStatus(event.target.value as FeedbackStatus | "all")} aria-label={locale === "ru" ? "Фильтр карты по статусу" : "Filter map by status"}>
             <option value="all">{locale === "ru" ? "Все статусы" : "Every status"}</option>
             {(["new", "under_review", "planned", "in_progress", "shipped"] as FeedbackStatus[]).map((value) => <option key={value} value={value}>{feedbackStatusLabel(value, locale)}</option>)}
           </select>
-          {(source !== "all" || status !== "all") && <button className="icon-button" type="button" onClick={() => { setSource("all"); setStatus("all"); }} aria-label="Reset filters"><RotateCcw size={13} /></button>}
+          {(source !== "all" || status !== "all") && <button className="icon-button" type="button" onClick={() => { setSource("all"); setStatus("all"); }} aria-label={locale === "ru" ? "Сбросить фильтры" : "Reset filters"}><RotateCcw size={13} /></button>}
         </div>
       </div>
 
-      {notice && <p className="map-notice" role="status">{notice}</p>}
+      <InlineFeedback message={notice} className="map-notice" />
       <div className="map-workspace">
-        <div className="map-canvas" aria-label="Interactive map from customer feedback to roadmap decisions">
+        <div className="map-canvas" aria-label={locale === "ru" ? "Интерактивная карта от отзывов клиентов до решений roadmap" : "Interactive map from customer feedback to roadmap decisions"}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -246,7 +258,7 @@ export function SignalMap({ graph, readOnly = false, initialSelected, locale = "
             <Controls showInteractive={false} />
           </ReactFlow>
         </div>
-        <aside className="map-inspector" aria-label="Selected evidence details">
+        <aside className="map-inspector scroll-fade-y" aria-label={locale === "ru" ? "Детали выбранной цепочки доказательств" : "Selected evidence details"}>
           {selected ? <Inspector key={selectedId} selected={selected} graph={{ ...graph, links }} onReview={review} pending={isPending} locale={locale} /> : <div className="inspector-empty">{locale === "ru" ? "Выберите отзыв, тему или пункт roadmap, чтобы изучить цепочку доказательств." : "Select a signal, theme or roadmap item to inspect its evidence path."}</div>}
         </aside>
       </div>
@@ -259,7 +271,20 @@ export function SignalMap({ graph, readOnly = false, initialSelected, locale = "
           return <article className="mobile-signal-path" key={`${roadmap.id}-${themeId}`}><span>{locale === "ru" ? "отзыв → тема → roadmap" : "feedback → theme → roadmap"}</span><h3>{roadmap.title}</h3><p>{locale === "ru" ? `${posts.length} отзывов подтверждают тему «${theme?.name}». ${roadmap.summary}` : `${posts.length} customer messages support “${theme?.name}”. ${roadmap.summary}`}</p></article>;
         }))}
       </div>
-    </>
+      <nav className="map-mobile-bar" aria-label={locale === "ru" ? "Режим Signal Map" : "Signal Map view"}>
+        <button type="button" data-active={mobileView === "map"} aria-pressed={mobileView === "map"} onClick={() => setMobileView("map")}>
+          {mobileView === "map" && <motion.i layoutId="mobile-map-view" transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 430, damping: 34 }} />}
+          <MapIcon size={15} /><span>{locale === "ru" ? "Карта" : "Map"}</span>
+        </button>
+        <button type="button" data-active={mobileView === "list"} aria-pressed={mobileView === "list"} onClick={() => setMobileView("list")}>
+          {mobileView === "list" && <motion.i layoutId="mobile-map-view" transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 430, damping: 34 }} />}
+          <List size={15} /><span>{locale === "ru" ? "Список" : "List"}</span>
+        </button>
+        <button type="button" data-active={mobileFilters} onClick={() => setMobileFilters((value) => !value)} aria-expanded={mobileFilters}>
+          <SlidersHorizontal size={15} /><span>{locale === "ru" ? "Фильтры" : "Filters"}</span>
+        </button>
+      </nav>
+    </section>
   );
 }
 
