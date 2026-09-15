@@ -14,9 +14,9 @@ export default async function WorkspaceLayout({ children, params }: { children: 
   ]);
   const root = `/app/${workspaceSlug}`;
   const commands: CommandItem[] = [
-    ...feedback.map((post) => ({ id: post.id, kind: "feedback" as const, label: post.title, detail: "Feedback", href: `${root}/inbox?selected=${post.id}` })),
-    ...themes.map((theme) => ({ id: theme.id, kind: "theme" as const, label: theme.name, detail: "Theme", href: `${root}/map?selected=${theme.id}` })),
-    ...roadmap.map((item) => ({ id: item.id, kind: "roadmap" as const, label: item.title, detail: "Roadmap", href: `${root}/roadmap?selected=${item.id}` })),
+    ...feedback.map((post) => ({ id: post.id, kind: "feedback" as const, label: post.title, detail: post.body, href: `${root}/inbox?selected=${post.id}` })),
+    ...themes.map((theme) => ({ id: theme.id, kind: "theme" as const, label: theme.name, detail: theme.description, href: `${root}/map?selected=${theme.id}` })),
+    ...roadmap.map((item) => ({ id: item.id, kind: "roadmap" as const, label: item.title, detail: item.summary, href: `${root}/roadmap?selected=${item.id}` })),
   ];
 
   return <AppShell

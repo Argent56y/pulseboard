@@ -8,4 +8,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/ru/demo/app/map", languages: { "en-US": "/demo/app/map", "ru-RU": "/ru/demo/app/map" } },
 };
 
-export default function RussianDemoMapPage() { return <SignalMap graph={demoGraphRu} readOnly locale="ru" />; }
+export default async function RussianDemoMapPage({ searchParams }: { searchParams: Promise<{ selected?: string }> }) {
+  const query = await searchParams;
+  return <SignalMap graph={demoGraphRu} readOnly initialSelected={query.selected} locale="ru" />;
+}

@@ -16,7 +16,7 @@ import {
   LogOut,
   X,
 } from "lucide-react";
-import { type MouseEvent, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { signOut } from "@/app/actions";
 import type { CommandItem, ViewerProfile, Workspace, WorkspaceMembership, WorkspaceRole } from "@/lib/types";
 import { LocaleSwitch } from "@/components/locale-switch";
@@ -49,7 +49,14 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [navigationPending, startNavigation] = useTransition();
   const [commandQuery, setCommandQuery] = useState("");
+  const [activeCommand, setActiveCommand] = useState(0);
   const commandRef = useRef<HTMLDialogElement>(null);
+  const commandInputRef = useRef<HTMLInputElement>(null);
+  const openCommandMenu = useCallback(() => {
+    if (!commandRef.current?.open) commandRef.current?.showModal();
+    setActiveCommand(0);
+    requestAnimationFrame(() => commandInputRef.current?.focus());
+  }, []);
   const appRoot = readOnly ? localizedPath(locale, "/demo/app") : `/app/${workspace.slug}`;
   const publicRoot = localizedPath(locale, workspace.slug === "demo" ? "/demo" : `/feedback/${workspace.slug}`);
   const current = useMemo(() => {
@@ -76,17 +83,46 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        commandRef.current?.showModal();
+        openCommandMenu();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [openCommandMenu]);
 
   const filteredCommands = useMemo(() => {
     const query = commandQuery.trim().toLowerCase();
     return (query ? commands.filter((item) => `${item.label} ${item.detail}`.toLowerCase().includes(query)) : commands).slice(0, 12);
   }, [commandQuery, commands]);
+
+  const searchCopy = locale === "ru" ? {
+    label: "Поиск по workspace",
+    placeholder: "Найти отзыв, тему или решение…",
+    close: "Закрыть поиск",
+    empty: "Ничего не найдено",
+    emptyHint: "Попробуйте другое название или ключевое слово.",
+    count: "результатов",
+    navigate: "выбор",
+    open: "открыть",
+  } : {
+    label: "Search workspace",
+    placeholder: "Search feedback, themes or roadmap…",
+    close: "Close search",
+    empty: "No matching signals or decisions",
+    emptyHint: "Try another title or keyword.",
+    count: "results",
+    navigate: "navigate",
+    open: "open",
+  };
+
+  function closeCommandMenu() {
+    commandRef.current?.close();
+  }
+
+  function openCommand(item: CommandItem) {
+    closeCommandMenu();
+    router.push(item.href);
+  }
 
   const initials = viewer?.displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "SD";
 
@@ -203,7 +239,7 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
             <div className="app-header-actions">
               {readOnly && <span className="demo-badge">{locale === "ru" ? "Только чтение · вымышленные данные" : "Read-only demo"}</span>}
               {readOnly && <LocaleSwitch locale={locale} section={pathname.replace(/^\/ru/, "")} />}
-              <button className="header-search" type="button" aria-label="Search workspace" onClick={() => commandRef.current?.showModal()}>
+              <button className="header-search" type="button" aria-label={searchCopy.label} onClick={openCommandMenu}>
                 <Search size={14} />
                 <span>{locale === "ru" ? "Поиск" : "Search"}</span>
                 <kbd>⌘ K</kbd>
@@ -218,19 +254,63 @@ export function AppShell({ workspace, role = "owner", viewer, memberships = [], 
           </div>
         </main>
       </div>
-      <dialog ref={commandRef} className="command-dialog" onClose={() => setCommandQuery("")}>
+      <dialog
+        ref={commandRef}
+        className="command-dialog"
+        aria-label={searchCopy.label}
+        onClose={() => { setCommandQuery(""); setActiveCommand(0); }}
+        onClick={(event) => { if (event.target === event.currentTarget) closeCommandMenu(); }}
+      >
         <div className="command-dialog-head">
           <Search size={16} />
-          <input autoFocus value={commandQuery} onChange={(event) => setCommandQuery(event.target.value)} placeholder="Search feedback, themes and roadmap…" aria-label="Search workspace" />
-          <button type="button" onClick={() => commandRef.current?.close()} aria-label="Close search"><X size={15} /></button>
+          <input
+            ref={commandInputRef}
+            value={commandQuery}
+            onChange={(event) => { setCommandQuery(event.target.value); setActiveCommand(0); }}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                if (filteredCommands.length) setActiveCommand((index) => Math.min(index + 1, filteredCommands.length - 1));
+              }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setActiveCommand((index) => Math.max(index - 1, 0));
+              }
+              if (event.key === "Enter" && filteredCommands[activeCommand]) {
+                event.preventDefault();
+                openCommand(filteredCommands[activeCommand]);
+              }
+            }}
+            placeholder={searchCopy.placeholder}
+            aria-label={searchCopy.label}
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="workspace-command-results"
+            aria-activedescendant={filteredCommands[activeCommand] ? `command-${filteredCommands[activeCommand].kind}-${filteredCommands[activeCommand].id}` : undefined}
+          />
+          <button type="button" onClick={closeCommandMenu} aria-label={searchCopy.close}><X size={16} /></button>
         </div>
-        <div className="command-results">
-          {filteredCommands.map((item) => <Link key={`${item.kind}-${item.id}`} href={item.href} onClick={() => commandRef.current?.close()}>
-            <span className={`command-kind command-kind-${item.kind}`}>{item.detail}</span>
-            <strong>{item.label}</strong>
+        <div className="command-results" id="workspace-command-results" role="listbox" aria-label={searchCopy.label}>
+          {filteredCommands.map((item, index) => <Link
+            id={`command-${item.kind}-${item.id}`}
+            key={`${item.kind}-${item.id}`}
+            href={item.href}
+            role="option"
+            aria-selected={index === activeCommand}
+            data-active={index === activeCommand}
+            onMouseEnter={() => setActiveCommand(index)}
+            onClick={closeCommandMenu}
+          >
+            <span className="command-result-copy"><strong>{item.label}</strong><small>{item.detail}</small></span>
+            <span className={`command-kind command-kind-${item.kind}`}>{item.kind === "feedback" ? (locale === "ru" ? "Отзыв" : "Feedback") : item.kind === "theme" ? (locale === "ru" ? "Тема" : "Theme") : "Roadmap"}</span>
           </Link>)}
-          {!filteredCommands.length && <div className="command-empty">No matching signals or decisions.</div>}
+          {!filteredCommands.length && <div className="command-empty"><Search size={19} /><strong>{searchCopy.empty}</strong><span>{searchCopy.emptyHint}</span></div>}
         </div>
+        <footer className="command-footer">
+          <span><kbd>↑</kbd><kbd>↓</kbd> {searchCopy.navigate}</span>
+          <span><kbd>↵</kbd> {searchCopy.open}</span>
+          <span className="command-result-count">{filteredCommands.length} {searchCopy.count}</span>
+        </footer>
       </dialog>
     </div>
   );
